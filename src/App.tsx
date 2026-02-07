@@ -1980,7 +1980,7 @@ function App() {
       if (current.phase !== 'selectFieldMatch' || current.currentPlayerIndex !== opponentPlayerIndex) {
         return
       }
-      const match = chooseAiMatch(current.pendingMatches, current.config.aiDifficulty)
+      const match = chooseAiMatch(current.pendingMatches, current.config.aiDifficulty, current)
       if (match) {
         executeTurnCommand({ type: 'selectHandMatch', fieldCardId: match.id })
       }
@@ -2011,7 +2011,7 @@ function App() {
       if (current.phase !== 'selectDrawMatch' || current.currentPlayerIndex !== opponentPlayerIndex) {
         return
       }
-      const match = chooseAiMatch(current.pendingMatches, current.config.aiDifficulty)
+      const match = chooseAiMatch(current.pendingMatches, current.config.aiDifficulty, current)
       if (match) {
         executeTurnCommand({ type: 'selectDrawMatch', fieldCardId: match.id })
       }

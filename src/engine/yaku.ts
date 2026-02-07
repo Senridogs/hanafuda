@@ -43,7 +43,8 @@ export function calculateYaku(capturedCards: readonly HanafudaCard[]): Yaku[] {
   }
 
   if (hasAllCards(capturedCards, INOSHIKACHO_IDS)) {
-    yaku.push(createYaku('inoshikacho', '猪鹿蝶', 5, findCardsByIds(capturedCards, INOSHIKACHO_IDS)))
+    const points = 5 + (taneCards.length - 3)
+    yaku.push(createYaku('inoshikacho', '猪鹿蝶', points, findCardsByIds(capturedCards, INOSHIKACHO_IDS)))
   }
 
   if (hasAllCards(capturedCards, ['mar-hikari', 'sep-tane'])) {
@@ -55,11 +56,13 @@ export function calculateYaku(capturedCards: readonly HanafudaCard[]): Yaku[] {
   }
 
   if (hasAllCards(capturedCards, AKATAN_IDS)) {
-    yaku.push(createYaku('akatan', '赤短', 5, findCardsByIds(capturedCards, AKATAN_IDS)))
+    const points = 5 + (tanzakuCards.length - 3)
+    yaku.push(createYaku('akatan', '赤短', points, findCardsByIds(capturedCards, AKATAN_IDS)))
   }
 
   if (hasAllCards(capturedCards, AOTAN_IDS)) {
-    yaku.push(createYaku('aotan', '青短', 5, findCardsByIds(capturedCards, AOTAN_IDS)))
+    const points = 5 + (tanzakuCards.length - 3)
+    yaku.push(createYaku('aotan', '青短', points, findCardsByIds(capturedCards, AOTAN_IDS)))
   }
 
   if (taneCards.length >= 5) {
