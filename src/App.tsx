@@ -1515,9 +1515,6 @@ function App() {
       return
     }
 
-    const actorName = multiplayer.mode === 'cpu'
-      ? game.players.find((player) => player.id === latest.player)?.name ?? 'プレイヤー'
-      : (latest.player === humanPlayer.id ? 'あなた' : '相手')
     const label = latest.type === 'koikoi' ? 'こいこい！' : 'あがり！'
     const callout: TurnDecisionCallout = {
       id: turnDecisionCalloutIdRef.current,
