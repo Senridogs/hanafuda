@@ -195,6 +195,27 @@ function buildRoundPointBreakdownLines(game: KoiKoiGameState): readonly string[]
   return lines
 }
 
+function buildGameOverScoreLines(game: KoiKoiGameState): readonly string[] {
+  const lines: string[] = []
+  const p1 = game.players[0]
+  const p2 = game.players[1]
+  
+  lines.push('=== 対局スコア ===')
+  if (game.roundScoreHistory.length === 0) {
+    return lines
+  }
+
+  lines.push('')
+  for (const entry of game.roundScoreHistory) {
+    lines.push(`第${entry.round}局: あなた ${entry.player1Points}文 / 相手 ${entry.player2Points}文`)
+  }
+  
+  lines.push('')
+  lines.push(`最終スコア: あなた ${p1.score}文 / 相手 ${p2.score}文`)
+  
+  return lines
+}
+
 
 function CardTile(props: {
   card: HanafudaCard
@@ -1301,7 +1322,7 @@ function App() {
     }
   }, [game, humanPlayer.id, isCpuAiTurn, isLocalTurn, multiplayer.mode])
   const roundPointBreakdownLines = useMemo(
-    () => buildRoundPointBreakdownLines(game),
+    () => game.phase === 'gameOver' ? buildGameOverScoreLines(game) : buildRoundPointBreakdownLines(game),
     [game],
   )
   const koikoiDecisionYakuLines = useMemo(() => {

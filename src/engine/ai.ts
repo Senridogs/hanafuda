@@ -1,6 +1,7 @@
 import type { HanafudaCard } from './types'
 import type { KoiKoiDecision, KoiKoiGameState } from './game'
 import { getMatchingFieldCards } from './game'
+import { HANAFUDA_CARDS } from './cards'
 import { calculateYaku, getYakuTotalPoints } from './yaku'
 
 const TYPE_PRIORITY: Record<HanafudaCard['type'], number> = {
@@ -31,47 +32,52 @@ interface SearchProfile {
   readonly immediateCaptureWeight: number
   readonly drawExpectationWeight: number
   readonly fieldRiskWeight: number
+  readonly opponentThreatWeight: number
   readonly handPotentialWeight: number
   readonly topN: number
 }
 
 const TSUYOI_PROFILE: SearchProfile = {
-  drawSamples: 6,
+  drawSamples: 4,
   immediateProgressWeight: 1.0,
-  immediateCaptureWeight: 2.0,
-  drawExpectationWeight: 0.6,
-  fieldRiskWeight: 0.18,
-  handPotentialWeight: 0.28,
+  immediateCaptureWeight: 1.9,
+  drawExpectationWeight: 0.45,
+  fieldRiskWeight: 0.15,
+  opponentThreatWeight: 0.08,
+  handPotentialWeight: 0.22,
   topN: 2,
 }
 
 const YABAI_PROFILE: SearchProfile = {
-  drawSamples: 12,
+  drawSamples: 8,
   immediateProgressWeight: 1.05,
   immediateCaptureWeight: 2.2,
-  drawExpectationWeight: 0.8,
-  fieldRiskWeight: 0.24,
-  handPotentialWeight: 0.34,
+  drawExpectationWeight: 0.72,
+  fieldRiskWeight: 0.2,
+  opponentThreatWeight: 0.14,
+  handPotentialWeight: 0.3,
   topN: 1,
 }
 
 const ONI_PROFILE: SearchProfile = {
-  drawSamples: 20,
-  immediateProgressWeight: 1.08,
-  immediateCaptureWeight: 2.35,
-  drawExpectationWeight: 0.95,
-  fieldRiskWeight: 0.3,
-  handPotentialWeight: 0.42,
+  drawSamples: 8,
+  immediateProgressWeight: 1.04,
+  immediateCaptureWeight: 2.08,
+  drawExpectationWeight: 0.62,
+  fieldRiskWeight: 0.18,
+  opponentThreatWeight: 0.12,
+  handPotentialWeight: 0.28,
   topN: 1,
 }
 
 const KAMI_PROFILE: SearchProfile = {
   drawSamples: Number.MAX_SAFE_INTEGER,
-  immediateProgressWeight: 1.12,
-  immediateCaptureWeight: 2.55,
-  drawExpectationWeight: 1.1,
-  fieldRiskWeight: 0.36,
-  handPotentialWeight: 0.5,
+  immediateProgressWeight: 1.16,
+  immediateCaptureWeight: 2.75,
+  drawExpectationWeight: 1.25,
+  fieldRiskWeight: 0.44,
+  opponentThreatWeight: 0.38,
+  handPotentialWeight: 0.56,
   topN: 1,
 }
 
@@ -207,17 +213,17 @@ function evaluateFutureHandPotential(hand: readonly HanafudaCard[], field: reado
   return total
 }
 
-function sampleDeckCards(deck: readonly HanafudaCard[], sampleCount: number): readonly HanafudaCard[] {
-  if (deck.length <= 1 || sampleCount >= deck.length) {
-    return deck
+function sampleCards(cards: readonly HanafudaCard[], sampleCount: number): readonly HanafudaCard[] {
+  if (cards.length <= 1 || sampleCount >= cards.length) {
+    return cards
   }
 
   const samples: HanafudaCard[] = []
   const used = new Set<number>()
   for (let i = 0; i < sampleCount; i += 1) {
-    const index = Math.floor((i * deck.length) / sampleCount)
+    const index = Math.floor((i * cards.length) / sampleCount)
     if (!used.has(index)) {
-      const card = deck[index]
+      const card = cards[index]
       if (card) {
         samples.push(card)
       }
@@ -226,10 +232,76 @@ function sampleDeckCards(deck: readonly HanafudaCard[], sampleCount: number): re
   }
 
   if (samples.length === 0) {
-    const first = deck[0]
+    const first = cards[0]
     return first ? [first] : []
   }
   return samples
+}
+
+function buildUnknownDrawCandidates(
+  state: KoiKoiGameState,
+  knownOwnHand: readonly HanafudaCard[],
+  knownField: readonly HanafudaCard[],
+  knownOwnCaptured: readonly HanafudaCard[],
+): HanafudaCard[] {
+  const opponentIndex: 0 | 1 = state.currentPlayerIndex === 0 ? 1 : 0
+  const knownIds = new Set<string>()
+
+  for (const card of knownOwnHand) {
+    knownIds.add(card.id)
+  }
+  for (const card of knownField) {
+    knownIds.add(card.id)
+  }
+  for (const card of knownOwnCaptured) {
+    knownIds.add(card.id)
+  }
+  for (const card of state.players[opponentIndex].captured) {
+    knownIds.add(card.id)
+  }
+  if (state.selectedHandCard) {
+    knownIds.add(state.selectedHandCard.id)
+  }
+  if (state.drawnCard) {
+    knownIds.add(state.drawnCard.id)
+  }
+
+  return HANAFUDA_CARDS.filter((card) => !knownIds.has(card.id))
+}
+
+function estimateOpponentCaptureThreat(
+  field: readonly HanafudaCard[],
+  unknownCandidates: readonly HanafudaCard[],
+): number {
+  if (field.length === 0 || unknownCandidates.length === 0) {
+    return 0
+  }
+
+  const unknownByMonth = new Map<number, number>()
+  for (const card of unknownCandidates) {
+    unknownByMonth.set(card.month, (unknownByMonth.get(card.month) ?? 0) + 1)
+  }
+
+  let threat = 0
+  for (const card of field) {
+    const monthUnknown = unknownByMonth.get(card.month) ?? 0
+    const exposure = monthUnknown / 3
+    threat += tacticalCardValue(card) * exposure
+  }
+
+  return threat
+}
+
+function estimateStopPointsFromCaptured(captured: readonly HanafudaCard[], opponentAlreadyKoikoi: boolean): number {
+  const basePoints = Math.max(1, getYakuTotalPoints(calculateYaku(captured)))
+  let multiplier = 1
+  if (basePoints >= 7) {
+    multiplier *= 2
+  }
+  if (opponentAlreadyKoikoi) {
+    multiplier *= 2
+  }
+  return basePoints * multiplier
 }
 
 function simulateCapture(
@@ -284,16 +356,16 @@ function enumerateHandStepOutcomes(state: KoiKoiGameState, handCard: HanafudaCar
 }
 
 function estimateDrawExpectation(
-  deck: readonly HanafudaCard[],
+  drawCandidates: readonly HanafudaCard[],
   fieldAfterHand: readonly HanafudaCard[],
   capturedAfterHand: readonly HanafudaCard[],
   profile: SearchProfile,
 ): number {
-  if (deck.length === 0 || profile.drawSamples <= 0) {
+  if (drawCandidates.length === 0 || profile.drawSamples <= 0) {
     return 0
   }
 
-  const drawSamples = sampleDeckCards(deck, Math.min(deck.length, profile.drawSamples))
+  const drawSamples = sampleCards(drawCandidates, Math.min(drawCandidates.length, profile.drawSamples))
   if (drawSamples.length === 0) {
     return 0
   }
@@ -348,14 +420,23 @@ function evaluateHandOutcome(
 
   const remainingHand = aiPlayer.hand.filter((card) => card.id !== handCard.id)
   const futureHandPotential = evaluateFutureHandPotential(remainingHand, outcome.fieldAfter)
-  const drawExpectation = estimateDrawExpectation(state.deck, outcome.fieldAfter, outcome.capturedAfter, profile)
+  const drawCandidates = buildUnknownDrawCandidates(state, remainingHand, outcome.fieldAfter, outcome.capturedAfter)
+  const drawExpectation = estimateDrawExpectation(drawCandidates, outcome.fieldAfter, outcome.capturedAfter, profile)
   const fieldRisk = evaluateFieldDanger(outcome.fieldAfter)
+  const opponentThreat = estimateOpponentCaptureThreat(outcome.fieldAfter, drawCandidates)
+  const stopPoints = estimateStopPointsFromCaptured(
+    outcome.capturedAfter,
+    state.koikoiCounts[state.currentPlayerIndex === 0 ? 1 : 0] > 0,
+  )
+  const stopPotential = stopPoints * 18
 
   return capturedDelta * profile.immediateProgressWeight
     + immediateCardGain * profile.immediateCaptureWeight
     + drawExpectation * profile.drawExpectationWeight
     + futureHandPotential * profile.handPotentialWeight
+    + stopPotential
     - fieldRisk * profile.fieldRiskWeight
+    - opponentThreat * profile.opponentThreatWeight
 }
 
 function chooseByProfile(state: KoiKoiGameState, profile: SearchProfile): HanafudaCard | null {
@@ -479,14 +560,23 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
   const capturedDelta = capturedAfter - capturedBefore
   const immediateCardGain = simulated.capturedNow.reduce((sum, card) => sum + tacticalCardValue(card), 0)
   const fieldRisk = evaluateFieldDanger(simulated.fieldAfter)
+  const drawCandidates = buildUnknownDrawCandidates(state, aiPlayer.hand, simulated.fieldAfter, simulated.capturedAfter)
+  const opponentThreat = estimateOpponentCaptureThreat(simulated.fieldAfter, drawCandidates)
+  const stopPoints = estimateStopPointsFromCaptured(
+    simulated.capturedAfter,
+    state.koikoiCounts[state.currentPlayerIndex === 0 ? 1 : 0] > 0,
+  )
+  const stopPotential = stopPoints * 18
 
   let score = capturedDelta * profile.immediateProgressWeight
     + immediateCardGain * profile.immediateCaptureWeight
+    + stopPotential
     - fieldRisk * profile.fieldRiskWeight
+    - opponentThreat * profile.opponentThreatWeight
 
   if (state.pendingSource === 'hand') {
     const handPotential = evaluateFutureHandPotential(aiPlayer.hand, simulated.fieldAfter)
-    const drawExpectation = estimateDrawExpectation(state.deck, simulated.fieldAfter, simulated.capturedAfter, profile)
+    const drawExpectation = estimateDrawExpectation(drawCandidates, simulated.fieldAfter, simulated.capturedAfter, profile)
     score += handPotential * profile.handPotentialWeight
     score += drawExpectation * profile.drawExpectationWeight
   }
@@ -711,6 +801,9 @@ function chooseKoiKoi_Kami(state: KoiKoiGameState): KoiKoiDecision {
   if (state.koikoiCounts[playerIndex] >= 1 && stopPoints >= 2) {
     return 'stop'
   }
+  if (stopPoints >= 3 && leadIfStop >= 0) {
+    return 'stop'
+  }
 
   if (stopPoints >= 8) {
     return 'stop'
@@ -728,14 +821,17 @@ function chooseKoiKoi_Kami(state: KoiKoiGameState): KoiKoiDecision {
   }
 
   const turnsLeft = Math.max(0, player.hand.length)
+  if (leadIfStop >= 4 && stopPoints >= 2 && turnsLeft <= 3) {
+    return 'stop'
+  }
   if (turnsLeft <= 1 && stopPoints >= 2) {
     return 'stop'
   }
 
   const ownPotential = evaluateCapturedStrength(player.captured)
   const oppPotential = evaluateCapturedStrength(opponent.captured)
-  const expectedGain = 2.1 + turnsLeft * 0.72 + Math.max(0, deficit) * 0.11 + Math.max(0, ownPotential - oppPotential) * 0.0008
-  const riskPenalty = stopPoints * (0.66 + turnsLeft * 0.07 + (state.koikoiCounts[opponentIndex] > 0 ? 0.24 : 0))
+  const expectedGain = 1.6 + turnsLeft * 0.58 + Math.max(0, deficit) * 0.1 + Math.max(0, ownPotential - oppPotential) * 0.0006
+  const riskPenalty = stopPoints * (0.78 + turnsLeft * 0.08 + (state.koikoiCounts[opponentIndex] > 0 ? 0.32 : 0))
     + Math.max(0, oppPotential - ownPotential) * 0.0012
 
   const stopUtility = leadIfStop

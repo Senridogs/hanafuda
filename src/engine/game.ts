@@ -4,6 +4,13 @@ import { calculateYaku, getYakuTotalPoints } from './yaku'
 
 type PlayerTuple = readonly [Player, Player]
 
+const DRAW_TYPE_WEIGHT: Record<HanafudaCard['type'], number> = {
+  hikari: 12,
+  tane: 8,
+  tanzaku: 5,
+  kasu: 2,
+}
+
 export type MatchSource = 'hand' | 'draw' | null
 export type RoundReason = 'stop' | 'exhausted' | 'draw' | null
 export type KoiKoiDecision = 'koikoi' | 'stop'
@@ -88,6 +95,102 @@ function requiresRedeal(
   return hasFourCardsOfSameMonth(field) || hasFourCardsOfSameMonth(player1Hand) || hasFourCardsOfSameMonth(player2Hand)
 }
 
+function isKamiAssistEnabled(config: GameConfig): boolean {
+  return config.enableAI && config.aiDifficulty === 'kami'
+}
+
+function cardTempoValue(card: HanafudaCard): number {
+  return DRAW_TYPE_WEIGHT[card.type] * 2 + card.points
+}
+
+function evaluateOpeningTempo(hand: readonly HanafudaCard[], field: readonly HanafudaCard[]): number {
+  let total = 0
+  for (const card of hand) {
+    const matches = getMatchingFieldCards(card, field)
+    if (matches.length === 0) {
+      total += DRAW_TYPE_WEIGHT[card.type]
+      continue
+    }
+
+    const bestField = matches.reduce((best, current) => Math.max(best, cardTempoValue(current)), 0)
+    total += 36 + matches.length * 14 + cardTempoValue(card) + bestField
+  }
+  return total
+}
+
+function hasKamiOpeningAdvantage(
+  humanHand: readonly HanafudaCard[],
+  aiHand: readonly HanafudaCard[],
+  field: readonly HanafudaCard[],
+): boolean {
+  const aiTempo = evaluateOpeningTempo(aiHand, field)
+  const humanTempo = evaluateOpeningTempo(humanHand, field)
+  return aiTempo >= humanTempo + 20
+}
+
+function drawImpactScore(card: HanafudaCard, field: readonly HanafudaCard[]): number {
+  const matches = getMatchingFieldCards(card, field)
+  if (matches.length === 0) {
+    return -12 + DRAW_TYPE_WEIGHT[card.type]
+  }
+  const bestField = matches.reduce((best, current) => Math.max(best, cardTempoValue(current)), 0)
+  return 42 + matches.length * 16 + cardTempoValue(card) + bestField
+}
+
+function chooseRiggedDrawIndexForKami(
+  deck: readonly HanafudaCard[],
+  field: readonly HanafudaCard[],
+  forAiPlayer: boolean,
+): number {
+  const searchWindow = Math.min(deck.length, forAiPlayer ? 12 : 10)
+  if (searchWindow <= 1) {
+    return 0
+  }
+
+  let chosenIndex = 0
+  let chosenScore = drawImpactScore(deck[0] as HanafudaCard, field)
+  for (let index = 1; index < searchWindow; index += 1) {
+    const card = deck[index]
+    if (!card) {
+      continue
+    }
+    const score = drawImpactScore(card, field)
+    if (forAiPlayer ? score > chosenScore : score < chosenScore) {
+      chosenIndex = index
+      chosenScore = score
+    }
+  }
+
+  return chosenIndex
+}
+
+function moveDeckIndexToTop(deck: readonly HanafudaCard[], index: number): HanafudaCard[] {
+  if (index <= 0 || index >= deck.length) {
+    return [...deck]
+  }
+  const moved = deck[index]
+  if (!moved) {
+    return [...deck]
+  }
+  const result = [...deck]
+  result.splice(index, 1)
+  result.unshift(moved)
+  return result
+}
+
+function maybeRigDeckForKami(state: KoiKoiGameState): readonly HanafudaCard[] {
+  if (!isKamiAssistEnabled(state.config) || state.deck.length <= 1) {
+    return state.deck
+  }
+
+  const forAiPlayer = state.currentPlayerIndex === 1
+  const chosenIndex = chooseRiggedDrawIndexForKami(state.deck, state.field, forAiPlayer)
+  if (chosenIndex === 0) {
+    return state.deck
+  }
+  return moveDeckIndexToTop(state.deck, chosenIndex)
+}
+
 function dealRound(
   players: PlayerTuple,
   config: GameConfig,
@@ -95,12 +198,16 @@ function dealRound(
   starterIndex: 0 | 1,
   prevRoundScoreHistory: readonly RoundScoreEntry[] = [],
 ): KoiKoiGameState {
+  const kamiAssist = isKamiAssistEnabled(config)
   let dealt = dealCards(shuffleDeck(createDeck()))
   let retries = 0
-  while (requiresRedeal(dealt.player1Hand, dealt.player2Hand, dealt.field)) {
+  while (
+    requiresRedeal(dealt.player1Hand, dealt.player2Hand, dealt.field)
+    || (kamiAssist && !hasKamiOpeningAdvantage(dealt.player1Hand, dealt.player2Hand, dealt.field))
+  ) {
     dealt = dealCards(shuffleDeck(createDeck()))
     retries += 1
-    if (retries > 256) {
+    if (retries > (kamiAssist ? 1024 : 256)) {
       throw new Error('Failed to find a valid initial deal')
     }
   }
@@ -452,7 +559,8 @@ export function drawStep(state: KoiKoiGameState): KoiKoiGameState {
   }
 
   const player = state.players[state.currentPlayerIndex]
-  const result = drawCard(state.deck)
+  const preparedDeck = maybeRigDeckForKami(state)
+  const result = drawCard(preparedDeck)
   if (!result) {
     return finishRoundFromExhaustion(state)
   }
