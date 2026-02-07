@@ -216,7 +216,7 @@ function CardTile(props: {
       layout={layoutMode}
       transition={layoutTransition}
       whileHover={selectable ? { y: -8, scale: 1.02 } : undefined}
-      whileTap={selectable ? { scale: 0.98 } : undefined}
+      whileTap={selectable ? { scale: 0.95, y: -4 } : undefined}
     >
       <img src={getCardImageUrl(card)} alt={`${card.month}月 ${card.name}`} loading="lazy" />
     </motion.button>
@@ -353,28 +353,48 @@ function MobileYakuStrip(props: {
   )
 }
 
-function MobileYakuGrid(props: {
-  allProgressEntries: readonly YakuProgressState[]
-  opponentTitle: string
-  humanTitle: string
-  opponentActive: boolean
-  humanActive: boolean
+function MobileYakuRow(props: {
+  visibleProgressEntries: readonly VisibleYakuProgressState[]
+  title: string
+  active: boolean
+  captureZoneId: 'player1' | 'player2'
+  onOpenDetail?: () => void
 }) {
-  const { allProgressEntries, opponentTitle, humanTitle, opponentActive, humanActive } = props
+  const { visibleProgressEntries, title, active, captureZoneId, onOpenDetail } = props
+
+  // サブエントリも含めてフラット化
+  const flatEntries = visibleProgressEntries.flatMap((entry) => {
+    const items = [{ key: entry.key, label: entry.label, current: entry.current, target: entry.target, done: entry.done }]
+    if (entry.subEntries) {
+      items.push(...entry.subEntries)
+    }
+    return items
+  })
 
   return (
-    <div className="mobile-yaku-grid-section">
-      <div className={`mobile-yaku-grid-header ${humanActive ? 'active' : ''}`}>
-        <span className="mobile-yaku-grid-title">{humanTitle} - 役</span>
+    <button
+      type="button"
+      className="mobile-yaku-grid-section"
+      onClick={onOpenDetail}
+      aria-label={`${title}の役詳細を表示`}
+      data-capture-zone={captureZoneId}
+    >
+      <div className={`mobile-yaku-grid-header ${active ? 'active' : ''}`}>
+        <span className="mobile-yaku-grid-title">{title} - 役</span>
+        <span className="mobile-yaku-grid-expand-hint">▼</span>
       </div>
       <div className="mobile-yaku-grid">
-        {allProgressEntries.map((entry) => (
-          <span key={entry.key} className={`mobile-yaku-grid-cell ${entry.done ? 'done' : ''} ${entry.current > 0 ? 'has-progress' : ''}`}>
-            {entry.label} {Math.min(entry.current, entry.target)}/{entry.target}
-          </span>
-        ))}
+        {flatEntries.length > 0 ? (
+          flatEntries.map((entry) => (
+            <span key={entry.key} className={`mobile-yaku-grid-cell ${entry.done ? 'done' : ''} ${entry.current > 0 ? 'has-progress' : ''}`}>
+              {entry.label} {Math.min(entry.current, entry.target)}/{entry.target}
+            </span>
+          ))
+        ) : (
+          <span className="mobile-yaku-grid-empty">成立に近い役はありません</span>
+        )}
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -1149,8 +1169,9 @@ function App() {
       return null
     }
 
-    const zoneBaseX = captureZoneRect.left + Math.min(captureZoneRect.width * 0.5, 132)
-    const zoneBaseY = captureZoneRect.top + 88
+    // 獲得ゾーンの中央に移動するように調整
+    const zoneBaseX = captureZoneRect.left + captureZoneRect.width * 0.5
+    const zoneBaseY = captureZoneRect.top + Math.min(captureZoneRect.height * 0.5, 60)
     const randomSeed = captureEffectIdRef.current * 17
     const targetCardWidth = CAPTURE_STACK_CARD_WIDTH
     const targetCardHeight = targetCardWidth * CARD_HEIGHT_PER_WIDTH
@@ -1970,7 +1991,7 @@ function App() {
 
           <section className={`board-center ${isMobileLayout ? 'mobile' : ''}`} aria-label="対局ボード" onClick={handleBoardClick}>
             <h2>{opponentDisplayName}の手札</h2>
-            <div className={`card-rack opponent-rack ${isMobileLayout ? 'hand-flat' : ''}`}>
+            <div className={`card-rack opponent-rack ${isMobileLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === opponentPlayerIndex ? 'active-turn' : ''}`}>
               {displayedAiHand.map((card, index) => {
                 const isPlaceholder = pendingAiPlaceholderCardId === card.id
                 const hasActiveMove = activeMoveCardIdSet.has(card.id)
@@ -2010,37 +2031,33 @@ function App() {
               })}
             </div>
 
+            {/* 相手の役（モバイルのみ・相手の手札の下） */}
             {isMobileLayout ? (
-              <>
-                {fieldRow}
-                <MobileYakuGrid
-                  allProgressEntries={humanAllProgressEntries}
-                  opponentTitle={opponentDisplayName}
-                  humanTitle={humanDisplayName}
-                  opponentActive={game.currentPlayerIndex === opponentPlayerIndex}
-                  humanActive={game.currentPlayerIndex === localPlayerIndex}
-                <MobileYakuStrip
-                  title={opponentDisplayName}
-                  entries={aiVisibleProgressEntries}
-                  active={game.currentPlayerIndex === opponentPlayerIndex}
-                  layout="stack"
-                  captureZoneId={aiPlayer.id}
-                  onOpenDetail={() => setMobileYakuDetailTarget('opponent')}
-                />
-                {fieldRow}
-                <MobileYakuStrip
-                  title={humanDisplayName}
-                  entries={humanVisibleProgressEntries}
-                  active={game.currentPlayerIndex === localPlayerIndex}
-                  layout="stack"
-                  captureZoneId={humanPlayer.id}
-                  onOpenDetail={() => setMobileYakuDetailTarget('self')}
-                />
-              </>
-            ) : fieldRow}
+              <MobileYakuRow
+                visibleProgressEntries={aiVisibleProgressEntries}
+                title={opponentDisplayName}
+                active={game.currentPlayerIndex === opponentPlayerIndex}
+                captureZoneId={aiPlayer.id}
+                onOpenDetail={() => setMobileYakuDetailTarget('opponent')}
+              />
+            ) : null}
+
+            {/* 場（中央） */}
+            {fieldRow}
+
+            {/* 自分の役（モバイルのみ・場の下、手札の上） */}
+            {isMobileLayout ? (
+              <MobileYakuRow
+                visibleProgressEntries={humanVisibleProgressEntries}
+                title={humanDisplayName}
+                active={game.currentPlayerIndex === localPlayerIndex}
+                captureZoneId={humanPlayer.id}
+                onOpenDetail={() => setMobileYakuDetailTarget('self')}
+              />
+            ) : null}
 
             <h2>{humanDisplayName}の手札</h2>
-            <div className={`card-rack player-rack ${isMobileLayout ? 'hand-flat' : ''}`}>
+            <div className={`card-rack player-rack ${isMobileLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === localPlayerIndex ? 'active-turn' : ''}`}>
               {displayedHumanHand.map((card, index) => {
                 const isPlaceholder = pendingPlaceholderCardId === card.id
                 const baseTilt = isMobileLayout ? 0 : stableTilt(card.id)

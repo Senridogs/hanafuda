@@ -209,9 +209,12 @@
 }
 
 @keyframes turn-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 12px rgb(245 170 60 / 30%);
   }
+
   50% {
     box-shadow: 0 0 20px rgb(245 170 60 / 50%);
   }
@@ -260,10 +263,20 @@
   container-type: size;
   --board-card-gap: clamp(3px, 1.1cqw, 12px);
   --board-rack-padding: clamp(4px, 1.35cqw, 12px);
+  /* X軸: 場札8枚分 + 7つのギャップ + 両端パディング */
   --board-card-width-fit-x: calc((100cqw - (var(--board-rack-padding) * 2) - (var(--board-card-gap) * 7)) / 8);
-  --board-card-width-fit-y: calc((100cqh - (var(--board-rack-padding) * 8) - 72px) / 6.56);
+  /* Y軸: 手札ラック×2 + 場札ラック(2段) = カード4枚分の高さ (1.64 * 4 = 6.56) */
+  /* 余白: パディング(ラック3つ×上下)×2 + ボードパディング×2 + ギャップ(2つ分) + 場札内ギャップ */
+  --board-vertical-padding: calc((var(--board-rack-padding) * 6) +
+      /* 3つのラック × 上下パディング */
+      32px +
+      /* ボードセンターのパディング (16px × 2) */
+      16px
+      /* ボードセンター内のギャップとマージン */
+    );
+  --board-card-width-fit-y: calc((100cqh - var(--board-vertical-padding)) / 6.56);
   --board-card-width-fit: min(var(--board-card-width-fit-x), var(--board-card-width-fit-y));
-  --board-card-width: clamp(32px, var(--board-card-width-fit), 82px);
+  --board-card-width: clamp(32px, var(--board-card-width-fit), 110px);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -272,13 +285,11 @@
   border: 1px solid rgb(255 223 179 / 24%);
   background:
     linear-gradient(180deg, rgb(10 16 18 / 68%), rgb(14 20 29 / 75%)),
-    repeating-linear-gradient(
-      -35deg,
+    repeating-linear-gradient(-35deg,
       rgb(255 255 255 / 2%) 0,
       rgb(255 255 255 / 2%) 2px,
       transparent 2px,
-      transparent 10px
-    );
+      transparent 10px);
   padding: 16px;
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 4%);
 }
@@ -298,8 +309,14 @@
   align-content: flex-start;
   border-radius: 14px;
   padding: var(--board-rack-padding);
-  min-height: calc((var(--board-card-width) * 1.64) + (var(--board-rack-padding) * 2));
+  /* カードサイズに応じて自動調整 */
   overflow: hidden;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card-rack.active-turn {
+  background-color: rgb(100 180 255 / 12%);
+  box-shadow: inset 0 0 0 2px rgb(100 180 255 / 35%);
 }
 
 .card-rack.hand-fan {
@@ -321,8 +338,8 @@
 
 .card-rack.hand-flat {
   justify-content: center;
-  flex-wrap: wrap;
-  gap: clamp(3px, 1cqw, 6px);
+  flex-wrap: nowrap;
+  gap: clamp(2px, 0.8cqw, 5px);
   overflow: visible;
 }
 
@@ -355,7 +372,7 @@
   gap: var(--board-card-gap);
   padding: var(--board-rack-padding);
   margin: 0;
-  min-height: calc((var(--board-card-width) * 3.28) + var(--board-card-gap) + (var(--board-rack-padding) * 2));
+  /* カードサイズに応じて自動調整 */
   background: transparent;
   border: 0;
 }
@@ -451,11 +468,28 @@ button.mobile-yaku-strip.active {
   opacity: 0.8;
 }
 
-.mobile-yaku-grid-section {
+button.mobile-yaku-grid-section {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 4px 0;
+  padding: 6px 8px;
+  width: 100%;
+  border: 1px solid rgb(255 223 179 / 18%);
+  border-radius: 10px;
+  background: rgb(20 30 38 / 50%);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+button.mobile-yaku-grid-section:hover,
+button.mobile-yaku-grid-section:focus-visible {
+  background: rgb(35 50 60 / 60%);
+  border-color: rgb(255 223 179 / 28%);
+}
+
+button.mobile-yaku-grid-section:active {
+  background: rgb(45 65 80 / 60%);
 }
 
 .mobile-yaku-grid-header {
@@ -474,18 +508,36 @@ button.mobile-yaku-strip.active {
   font-weight: 700;
   color: #f3dfbe;
   letter-spacing: 0.04em;
+  flex: 1;
+}
+
+.mobile-yaku-grid-expand-hint {
+  font-size: 0.55rem;
+  color: #a0a8b0;
+  margin-left: auto;
 }
 
 .mobile-yaku-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 3px;
+  min-height: calc(22px * 3 + 6px);
+  /* 3行分の高さを確保（22px × 3 + gap） */
 }
 
 .mobile-yaku-grid-cell {
-  font-size: 0.6rem;
-  line-height: 1.3;
-  padding: 3px 4px;
+  flex: 0 0 calc((100% - 9px) / 4);
+  /* 4列固定幅 */
+  height: 22px;
+  /* 高さ固定 */
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  line-height: 1;
+  padding: 2px 3px;
   border-radius: 5px;
   color: #8a9aaa;
   border: 1px solid rgb(100 130 140 / 22%);
@@ -508,9 +560,15 @@ button.mobile-yaku-strip.active {
   background: rgb(127 73 24 / 30%);
 }
 
+.mobile-yaku-grid-empty {
+  font-size: 0.6rem;
+  color: #8a9aaa;
+  padding: 4px 0;
+}
+
 .deck-zone {
   position: relative;
-  min-height: calc((var(--board-card-width) * 1.95) + 8px);
+  /* カードサイズに応じて自動調整 */
   border-radius: 12px;
   border: 1px solid rgb(255 203 137 / 22%);
   background: rgb(0 0 0 / 20%);
@@ -602,6 +660,7 @@ button.mobile-yaku-strip.active {
   from {
     transform: rotate(1deg) translateY(0);
   }
+
   to {
     transform: rotate(-1deg) translateY(-3px);
   }
@@ -704,11 +763,11 @@ button.mobile-yaku-strip.active {
   padding-right: 2px;
 }
 
-.matrix-group + .matrix-group {
+.matrix-group+.matrix-group {
   margin-top: 7px;
 }
 
-.progress-entry + .progress-entry {
+.progress-entry+.progress-entry {
   margin-top: 7px;
 }
 
@@ -905,10 +964,12 @@ button.mobile-yaku-strip.active {
 }
 
 @keyframes playable-pulse {
+
   0%,
   100% {
     filter: brightness(1);
   }
+
   50% {
     filter: brightness(1.16);
   }
@@ -1308,19 +1369,23 @@ button:hover {
   }
 
   .board-center {
-    --board-card-width: clamp(30px, 10.6cqw, 48px);
     --board-card-gap: clamp(2px, 1cqw, 7px);
     --board-rack-padding: clamp(3px, 1.05cqw, 8px);
+    /* モバイル: 縦横両方を考慮して最大サイズを計算 */
+    --board-vertical-padding-mobile: calc((var(--board-rack-padding) * 6) + 20px + 16px);
+    --board-card-width-fit-x-mobile: calc((100cqw - (var(--board-rack-padding) * 2) - (var(--board-card-gap) * 7)) / 8);
+    --board-card-width-fit-y-mobile: calc((100cqh - var(--board-vertical-padding-mobile)) / 6.56);
+    --board-card-width: clamp(30px, min(var(--board-card-width-fit-x-mobile), var(--board-card-width-fit-y-mobile)), 58px);
   }
 
   .board-center.mobile {
-    gap: 10px;
+    gap: 8px;
     padding: 10px 8px;
+    justify-content: center;
   }
 
   .board-center.mobile::after {
-    content: '';
-    flex: 0.8 1 0px;
+    display: none;
   }
 
   .board-center.mobile h2 {
@@ -1328,7 +1393,7 @@ button:hover {
   }
 
   .board-center.mobile .field-row {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-height: 0;
   }
 
@@ -1359,7 +1424,7 @@ button:hover {
   }
 
   .card-rack.hand-flat {
-    min-height: calc((var(--board-card-width) * 1.64) + (var(--board-rack-padding) * 2));
+    /* カードサイズに応じて自動調整 */
     padding-inline: 4px;
     gap: clamp(2px, 0.8cqw, 5px);
   }
@@ -1379,7 +1444,7 @@ button:hover {
   }
 
   .deck-zone {
-    min-height: calc((var(--board-card-width) * 1.9) + 6px);
+    /* カードサイズに応じて自動調整 */
     padding: 5px;
   }
 
@@ -1390,7 +1455,7 @@ button:hover {
   }
 
   .field-rack-inner {
-    min-height: calc((var(--board-card-width) * 3.28) + var(--board-card-gap) + (var(--board-rack-padding) * 2));
+    /* カードサイズに応じて自動調整 */
     padding: var(--board-rack-padding);
     gap: var(--board-card-gap);
   }
