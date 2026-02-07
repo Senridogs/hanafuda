@@ -1470,6 +1470,10 @@ button.mobile-yaku-strip.active {
   color: #ded5c4;
 }
 
+.overlay-details {
+  margin-top: 12px;
+}
+
 .overlay-message-list {
   margin: 8px 0 0;
   padding: 0 0 0 1.1em;

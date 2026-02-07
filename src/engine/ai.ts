@@ -38,14 +38,14 @@ interface SearchProfile {
 }
 
 const TSUYOI_PROFILE: SearchProfile = {
-  drawSamples: 4,
-  immediateProgressWeight: 1.0,
-  immediateCaptureWeight: 1.9,
-  drawExpectationWeight: 0.45,
-  fieldRiskWeight: 0.15,
-  opponentThreatWeight: 0.08,
-  handPotentialWeight: 0.22,
-  topN: 2,
+  drawSamples: 7,
+  immediateProgressWeight: 1.04,
+  immediateCaptureWeight: 2.1,
+  drawExpectationWeight: 0.67,
+  fieldRiskWeight: 0.19,
+  opponentThreatWeight: 0.13,
+  handPotentialWeight: 0.29,
+  topN: 1,
 }
 
 const YABAI_PROFILE: SearchProfile = {
@@ -472,7 +472,23 @@ function chooseHandCard_Yowai(state: KoiKoiGameState): HanafudaCard | null {
   if (legalCards.length === 0) {
     return null
   }
-  return legalCards[getRandomInt(legalCards.length)] ?? null
+
+  const anyMatchExists = legalCards.some((card) => getMatchingFieldCards(card, state.field).length > 0)
+  if (!anyMatchExists) {
+    return [...legalCards].sort((left, right) => tacticalCardValue(right) - tacticalCardValue(left))[0] ?? null
+  }
+
+  const ranked = [...legalCards].sort((left, right) => {
+    const leftMatches = getMatchingFieldCards(left, state.field)
+    const rightMatches = getMatchingFieldCards(right, state.field)
+    const leftBest = leftMatches.reduce((best, card) => Math.max(best, tacticalCardValue(card)), 0)
+    const rightBest = rightMatches.reduce((best, card) => Math.max(best, tacticalCardValue(card)), 0)
+    const leftScore = leftMatches.length * 16 + tacticalCardValue(left) + leftBest
+    const rightScore = rightMatches.length * 16 + tacticalCardValue(right) + rightBest
+    return leftScore - rightScore
+  })
+
+  return ranked[0] ?? legalCards[getRandomInt(legalCards.length)] ?? null
 }
 
 function chooseHandCard_Futsuu(state: KoiKoiGameState): HanafudaCard | null {
@@ -536,7 +552,7 @@ function chooseMatch_Yowai(matches: readonly HanafudaCard[]): HanafudaCard | nul
   if (matches.length === 0) {
     return null
   }
-  return matches[getRandomInt(matches.length)] ?? null
+  return [...matches].sort((left, right) => tacticalCardValue(left) - tacticalCardValue(right))[0] ?? null
 }
 
 function chooseMatch_Futsuu(matches: readonly HanafudaCard[]): HanafudaCard | null {
@@ -668,7 +684,7 @@ function estimateStopRoundPoints(state: KoiKoiGameState, playerIndex: 0 | 1): nu
 }
 
 function chooseKoiKoi_Yowai(): KoiKoiDecision {
-  return Math.random() < 0.5 ? 'koikoi' : 'stop'
+  return 'koikoi'
 }
 
 function chooseKoiKoi_Futsuu(state: KoiKoiGameState): KoiKoiDecision {
@@ -691,26 +707,7 @@ function chooseKoiKoi_Futsuu(state: KoiKoiGameState): KoiKoiDecision {
 }
 
 function chooseKoiKoi_Tsuyoi(state: KoiKoiGameState): KoiKoiDecision {
-  const player = state.players[state.currentPlayerIndex]
-  const opponent = state.players[1 - state.currentPlayerIndex]
-  const currentRoundPoints = getYakuTotalPoints(player.completedYaku)
-
-  if (player.score + currentRoundPoints >= state.config.targetScore) {
-    return 'stop'
-  }
-  if (state.koikoiCounts[state.currentPlayerIndex] >= 2) {
-    return 'stop'
-  }
-  if (opponent.score > player.score + 18 && currentRoundPoints >= 5) {
-    return 'stop'
-  }
-  if (currentRoundPoints >= 8) {
-    return 'stop'
-  }
-  if (state.round >= state.config.maxRounds) {
-    return 'stop'
-  }
-  return 'koikoi'
+  return chooseKoiKoi_Yabai(state)
 }
 
 function chooseKoiKoi_Yabai(state: KoiKoiGameState): KoiKoiDecision {

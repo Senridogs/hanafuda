@@ -125,7 +125,7 @@ function hasKamiOpeningAdvantage(
 ): boolean {
   const aiTempo = evaluateOpeningTempo(aiHand, field)
   const humanTempo = evaluateOpeningTempo(humanHand, field)
-  return aiTempo >= humanTempo + 20
+  return aiTempo >= humanTempo + 8
 }
 
 function drawImpactScore(card: HanafudaCard, field: readonly HanafudaCard[]): number {
@@ -142,7 +142,10 @@ function chooseRiggedDrawIndexForKami(
   field: readonly HanafudaCard[],
   forAiPlayer: boolean,
 ): number {
-  const searchWindow = Math.min(deck.length, forAiPlayer ? 12 : 10)
+  if (!forAiPlayer) {
+    return 0
+  }
+  const searchWindow = Math.min(deck.length, 2)
   if (searchWindow <= 1) {
     return 0
   }
@@ -155,7 +158,7 @@ function chooseRiggedDrawIndexForKami(
       continue
     }
     const score = drawImpactScore(card, field)
-    if (forAiPlayer ? score > chosenScore : score < chosenScore) {
+    if (score > chosenScore) {
       chosenIndex = index
       chosenScore = score
     }
@@ -207,7 +210,7 @@ function dealRound(
   ) {
     dealt = dealCards(shuffleDeck(createDeck()))
     retries += 1
-    if (retries > (kamiAssist ? 1024 : 256)) {
+    if (retries > (kamiAssist ? 80 : 256)) {
       throw new Error('Failed to find a valid initial deal')
     }
   }
