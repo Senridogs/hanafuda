@@ -14,7 +14,7 @@ import {
 import { loadSessionMeta } from './net/persistence'
 import './App.css'
 import { chooseAiHandCard, chooseAiKoiKoi, chooseAiMatch } from './engine/ai'
-import { CARD_ART_CREDIT_TEXT, CARD_ART_LICENSE_URL, getCardImageUrl } from './engine/cardArt'
+import { getCardImageUrl } from './engine/cardArt'
 import { HANAFUDA_CARDS } from './engine/cards'
 import {
   checkTurn,
@@ -101,6 +101,8 @@ const MOBILE_BREAKPOINT_QUERY = '(max-width: 720px)'
 const FLICK_MIN_DISTANCE_PX = 38
 const FLICK_MIN_SPEED_PX_PER_MS = 0.28
 const FLICK_MIN_UPWARD_DELTA_PX = -10
+const TAP_MAX_DISTANCE_PX = 10
+const TAP_MAX_DURATION_MS = 300
 const MOBILE_FAN_TILT_STEP_DEG = 3.4
 const MOBILE_FAN_CURVE_PX = 2.8
 
@@ -320,15 +322,15 @@ function MobileYakuStrip(props: {
   entries: readonly VisibleYakuProgressState[]
   active: boolean
   onOpenDetail: () => void
-  position: 'left' | 'right'
+  layout?: 'side' | 'stack'
   captureZoneId: 'player1' | 'player2'
 }) {
-  const { title, entries, active, onOpenDetail, position, captureZoneId } = props
+  const { title, entries, active, onOpenDetail, layout = 'side', captureZoneId } = props
 
   return (
     <button
       type="button"
-      className={`mobile-yaku-strip ${position} ${active ? 'active' : ''}`}
+      className={`mobile-yaku-strip ${layout} ${active ? 'active' : ''}`}
       onClick={onOpenDetail}
       aria-label={`${title}の役詳細を開く`}
       data-capture-zone={captureZoneId}
@@ -1604,7 +1606,8 @@ function App() {
           distance >= FLICK_MIN_DISTANCE_PX &&
           speed >= FLICK_MIN_SPEED_PX_PER_MS &&
           dy <= FLICK_MIN_UPWARD_DELTA_PX
-        if (isFlick) {
+        const isTap = distance <= TAP_MAX_DISTANCE_PX && elapsed <= TAP_MAX_DURATION_MS
+        if (isFlick || isTap) {
           handlePlayCard(card)
         }
       }
@@ -1983,25 +1986,25 @@ function App() {
             </div>
 
             {isMobileLayout ? (
-              <div className="mobile-center-row">
+              <>
                 <MobileYakuStrip
                   title={opponentDisplayName}
                   entries={aiVisibleProgressEntries}
                   active={game.currentPlayerIndex === opponentPlayerIndex}
-                  position="left"
+                  layout="stack"
                   captureZoneId={aiPlayer.id}
                   onOpenDetail={() => setMobileYakuDetailTarget('opponent')}
                 />
-                <div className="mobile-field-column">{fieldRow}</div>
+                {fieldRow}
                 <MobileYakuStrip
                   title={humanDisplayName}
                   entries={humanVisibleProgressEntries}
                   active={game.currentPlayerIndex === localPlayerIndex}
-                  position="right"
+                  layout="stack"
                   captureZoneId={humanPlayer.id}
                   onOpenDetail={() => setMobileYakuDetailTarget('self')}
                 />
-              </div>
+              </>
             ) : fieldRow}
 
             <h2>{humanDisplayName}の手札</h2>
@@ -2109,15 +2112,6 @@ function App() {
           <p>CPU対戦を開始するか、通信接続が確立すると対戦盤面が表示されます。</p>
         </section>
       )}
-
-      {isMatchSurfaceVisible ? (
-        <footer className="credit">
-          <span>{CARD_ART_CREDIT_TEXT}</span>
-          <a href={CARD_ART_LICENSE_URL} target="_blank" rel="noreferrer">
-            ライセンス
-          </a>
-        </footer>
-      ) : null}
 
       <YakuDropEffect cards={dropCards} />
       <AnimatePresence>

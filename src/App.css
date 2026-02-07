@@ -303,13 +303,14 @@
 }
 
 .card-rack.hand-fan {
-  justify-content: center;
+  justify-content: flex-start;
   align-items: flex-end;
   overflow: visible;
+  width: 100%;
 }
 
 .card-rack.hand-fan .fan-card {
-  margin-left: calc(var(--board-card-width) * -0.42);
+  margin-left: calc(var(--board-card-width) * -0.24);
   transform-origin: 50% 118%;
   touch-action: none;
 }
@@ -372,21 +373,6 @@
   align-items: start;
 }
 
-.mobile-center-row {
-  display: grid;
-  grid-template-columns: minmax(64px, 74px) minmax(0, 1fr) minmax(64px, 74px);
-  align-items: stretch;
-  gap: 7px;
-}
-
-.mobile-field-column {
-  min-width: 0;
-}
-
-.mobile-field-column .field-row {
-  height: 100%;
-}
-
 button.mobile-yaku-strip {
   border-radius: 12px;
   border: 1px solid rgb(255 219 163 / 26%);
@@ -400,6 +386,16 @@ button.mobile-yaku-strip {
   min-width: 0;
   min-height: 0;
   color: #f7f0e2;
+}
+
+button.mobile-yaku-strip.stack {
+  width: 100%;
+  padding: 8px 10px;
+}
+
+button.mobile-yaku-strip.stack .mobile-yaku-strip-list {
+  max-height: 96px;
+  overflow: auto;
 }
 
 button.mobile-yaku-strip.active {
@@ -1254,12 +1250,22 @@ button:hover {
   }
 
   .board-center.mobile {
-    gap: 6px;
+    gap: 10px;
     padding: 10px 8px;
+  }
+
+  .board-center.mobile::after {
+    content: '';
+    flex: 0.8 1 0px;
   }
 
   .board-center.mobile h2 {
     font-size: 0.78rem;
+  }
+
+  .board-center.mobile .field-row {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 
   .topbar {
@@ -1290,16 +1296,11 @@ button:hover {
 
   .card-rack.hand-fan {
     min-height: calc((var(--board-card-width) * 1.7) + 10px);
-    padding-inline: 2px;
+    padding-inline: 4px;
   }
 
   .card-rack.hand-fan .fan-card {
-    margin-left: calc(var(--board-card-width) * -0.46);
-  }
-
-  .mobile-center-row {
-    grid-template-columns: minmax(58px, 68px) minmax(0, 1fr) minmax(58px, 68px);
-    gap: 5px;
+    margin-left: calc(var(--board-card-width) * -0.16);
   }
 
   button.mobile-yaku-strip {
@@ -1315,6 +1316,10 @@ button:hover {
   .mobile-yaku-chip {
     font-size: 0.58rem;
     padding: 2px 3px;
+  }
+
+  button.mobile-yaku-strip.stack {
+    padding: 7px 8px;
   }
 
   .field-row {
