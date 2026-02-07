@@ -81,4 +81,26 @@ describe('buildYakuProgressEntries', () => {
     expect(entryMap.get('kasu')?.current).toBe(10)
     expect(entryMap.get('kasu')?.done).toBe(true)
   })
+
+  it('hides progress for card-set yaku that are impossible due to opponent captures', () => {
+    const captured = cardsById(['mar-hikari'])
+    const blocked = new Set<string>(['sep-tane'])
+    const entries = buildYakuProgressEntries(captured, calculateYaku(captured), blocked)
+    const hanami = toEntryMap(entries).get('hanami-zake')
+
+    expect(hanami?.current).toBe(0)
+    expect(hanami?.cards).toEqual([])
+    expect(hanami?.done).toBe(false)
+  })
+
+  it('hides threshold yaku progress when reaching target is impossible', () => {
+    const captured = cardsById(['feb-tane', 'apr-tane', 'may-tane', 'aug-tane'])
+    const blocked = new Set<string>(['jun-tane', 'jul-tane', 'oct-tane', 'nov-tane', 'sep-tane'])
+    const entries = buildYakuProgressEntries(captured, calculateYaku(captured), blocked)
+    const tane = toEntryMap(entries).get('tane')
+
+    expect(tane?.current).toBe(0)
+    expect(tane?.cards).toEqual([])
+    expect(tane?.done).toBe(false)
+  })
 })

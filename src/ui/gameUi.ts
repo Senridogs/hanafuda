@@ -1,4 +1,5 @@
 import type { KoiKoiGameState } from '../engine/game'
+import { getCardsByType } from '../engine/cards'
 import type { HanafudaCard, Yaku } from '../engine/types'
 
 export const AI_PLAYER_INDEX = 1
@@ -17,6 +18,12 @@ export const AOTAN_SET = new Set<string>(AOTAN_IDS)
 export const HANAMI_SET = new Set<string>(HANAMI_IDS)
 export const TSUKIMI_SET = new Set<string>(TSUKIMI_IDS)
 export const INOSHIKACHO_SET = new Set<string>(INOSHIKACHO_IDS)
+const HIKARI_IDS = ['jan-hikari', 'mar-hikari', 'aug-hikari', 'nov-hikari', 'dec-hikari'] as const
+const NON_RAIN_HIKARI_IDS = ['jan-hikari', 'mar-hikari', 'aug-hikari', 'dec-hikari'] as const
+const TANE_CARD_IDS = getCardsByType('tane').map((card) => card.id)
+const TANZAKU_CARD_IDS = getCardsByType('tanzaku').map((card) => card.id)
+const KASU_CARD_IDS = getCardsByType('kasu').map((card) => card.id)
+const EMPTY_BLOCKED_CARD_IDS: ReadonlySet<string> = new Set()
 
 export function getTurnIntent(phase: KoiKoiGameState['phase']): TurnIntent {
   if (phase === 'selectHandCard') return 'play'
@@ -50,6 +57,23 @@ export function countMatched(capturedIds: ReadonlySet<string>, ids: readonly str
 
 export function filterCapturedByIds(captured: readonly HanafudaCard[], ids: ReadonlySet<string>): HanafudaCard[] {
   return captured.filter((card) => ids.has(card.id))
+}
+
+function countPotentialMatches(
+  ids: readonly string[],
+  capturedIds: ReadonlySet<string>,
+  blockedCardIds: ReadonlySet<string>,
+): number {
+  return ids.reduce((acc, id) => acc + (capturedIds.has(id) || !blockedCardIds.has(id) ? 1 : 0), 0)
+}
+
+function canReachByIds(
+  ids: readonly string[],
+  target: number,
+  capturedIds: ReadonlySet<string>,
+  blockedCardIds: ReadonlySet<string>,
+): boolean {
+  return countPotentialMatches(ids, capturedIds, blockedCardIds) >= target
 }
 
 export type YakuProgressKey =
@@ -90,6 +114,7 @@ export interface VisibleYakuProgressState extends YakuProgressState {
 export function buildYakuProgressEntries(
   captured: readonly HanafudaCard[],
   yaku: readonly Yaku[],
+  blockedCardIds: ReadonlySet<string> = EMPTY_BLOCKED_CARD_IDS,
 ): readonly YakuProgressState[] {
   const completedTypes = new Set(yaku.map((item) => item.type))
   const capturedIds = new Set(captured.map((card) => card.id))
@@ -127,20 +152,131 @@ export function buildYakuProgressEntries(
   const hanamiCount = countMatched(capturedIds, HANAMI_IDS)
   const tsukimiCount = countMatched(capturedIds, TSUKIMI_IDS)
   const inoshikachoCount = countMatched(capturedIds, INOSHIKACHO_IDS)
+  const canReachGoko = canReachByIds(HIKARI_IDS, 5, capturedIds, blockedCardIds)
+  const canReachShiko = canReachByIds(NON_RAIN_HIKARI_IDS, 4, capturedIds, blockedCardIds)
+  const canReachAmeShiko =
+    (capturedIds.has('nov-hikari') || !blockedCardIds.has('nov-hikari')) &&
+    canReachByIds(HIKARI_IDS, 4, capturedIds, blockedCardIds)
+  const canReachSanko = canReachByIds(NON_RAIN_HIKARI_IDS, 3, capturedIds, blockedCardIds)
+  const canReachHanami = canReachByIds(HANAMI_IDS, 2, capturedIds, blockedCardIds)
+  const canReachTsukimi = canReachByIds(TSUKIMI_IDS, 2, capturedIds, blockedCardIds)
+  const canReachInoshikacho = canReachByIds(INOSHIKACHO_IDS, 3, capturedIds, blockedCardIds)
+  const canReachTane = canReachByIds(TANE_CARD_IDS, 5, capturedIds, blockedCardIds)
+  const canReachAkatan = canReachByIds(AKATAN_IDS, 3, capturedIds, blockedCardIds)
+  const canReachAotan = canReachByIds(AOTAN_IDS, 3, capturedIds, blockedCardIds)
+  const canReachTanzaku = canReachByIds(TANZAKU_CARD_IDS, 5, capturedIds, blockedCardIds)
+  const canReachKasu = canReachByIds(KASU_CARD_IDS, 10, capturedIds, blockedCardIds)
+
+  const showGoko = gokoDone || canReachGoko
+  const showShiko = shikoDone || canReachShiko
+  const showAmeShiko = ameShikoDone || canReachAmeShiko
+  const showSanko = sankoDone || canReachSanko
+  const showHanami = completedTypes.has('hanami-zake') || canReachHanami
+  const showTsukimi = completedTypes.has('tsukimi-zake') || canReachTsukimi
+  const showInoshikacho = completedTypes.has('inoshikacho') || canReachInoshikacho
+  const showTane = completedTypes.has('tane') || canReachTane
+  const showAkatan = completedTypes.has('akatan') || canReachAkatan
+  const showAotan = completedTypes.has('aotan') || canReachAotan
+  const showTanzaku = completedTypes.has('tanzaku') || canReachTanzaku
+  const showKasu = completedTypes.has('kasu') || canReachKasu
 
   return [
-    { key: 'goko', label: '五光', current: gokoProgressCount, target: 5, cards: gokoProgressCards, done: gokoDone },
-    { key: 'shiko', label: '四光', current: shikoProgressCount, target: 4, cards: shikoProgressCards, done: shikoDone },
-    { key: 'ame-shiko', label: '雨入り四光', current: ameShikoProgressCount, target: 4, cards: hikariCards, done: ameShikoDone },
-    { key: 'sanko', label: '三光', current: sankoProgressCount, target: 3, cards: sankoProgressCards, done: sankoDone },
-    { key: 'hanami-zake', label: '花見で一杯', current: hanamiCount, target: 2, cards: hanamiCards, done: completedTypes.has('hanami-zake') },
-    { key: 'tsukimi-zake', label: '月見で一杯', current: tsukimiCount, target: 2, cards: tsukimiCards, done: completedTypes.has('tsukimi-zake') },
-    { key: 'inoshikacho', label: '猪鹿蝶', current: inoshikachoCount, target: 3, cards: inoshikachoCards, done: completedTypes.has('inoshikacho') },
-    { key: 'tane', label: 'タネ5', current: taneCards.length, target: 5, cards: taneCards, done: completedTypes.has('tane') },
-    { key: 'akatan', label: '赤タン', current: akatanCount, target: 3, cards: akatanCards, done: completedTypes.has('akatan') },
-    { key: 'aotan', label: '青タン', current: aotanCount, target: 3, cards: aotanCards, done: completedTypes.has('aotan') },
-    { key: 'tanzaku', label: 'タン5', current: tanzakuCards.length, target: 5, cards: tanzakuCards, done: completedTypes.has('tanzaku') },
-    { key: 'kasu', label: 'カス10', current: kasuCards.length, target: 10, cards: kasuCards, done: completedTypes.has('kasu') },
+    {
+      key: 'goko',
+      label: '五光',
+      current: showGoko ? gokoProgressCount : 0,
+      target: 5,
+      cards: showGoko ? gokoProgressCards : [],
+      done: gokoDone,
+    },
+    {
+      key: 'shiko',
+      label: '四光',
+      current: showShiko ? shikoProgressCount : 0,
+      target: 4,
+      cards: showShiko ? shikoProgressCards : [],
+      done: shikoDone,
+    },
+    {
+      key: 'ame-shiko',
+      label: '雨入り四光',
+      current: showAmeShiko ? ameShikoProgressCount : 0,
+      target: 4,
+      cards: showAmeShiko ? hikariCards : [],
+      done: ameShikoDone,
+    },
+    {
+      key: 'sanko',
+      label: '三光',
+      current: showSanko ? sankoProgressCount : 0,
+      target: 3,
+      cards: showSanko ? sankoProgressCards : [],
+      done: sankoDone,
+    },
+    {
+      key: 'hanami-zake',
+      label: '花見で一杯',
+      current: showHanami ? hanamiCount : 0,
+      target: 2,
+      cards: showHanami ? hanamiCards : [],
+      done: completedTypes.has('hanami-zake'),
+    },
+    {
+      key: 'tsukimi-zake',
+      label: '月見で一杯',
+      current: showTsukimi ? tsukimiCount : 0,
+      target: 2,
+      cards: showTsukimi ? tsukimiCards : [],
+      done: completedTypes.has('tsukimi-zake'),
+    },
+    {
+      key: 'inoshikacho',
+      label: '猪鹿蝶',
+      current: showInoshikacho ? inoshikachoCount : 0,
+      target: 3,
+      cards: showInoshikacho ? inoshikachoCards : [],
+      done: completedTypes.has('inoshikacho'),
+    },
+    {
+      key: 'tane',
+      label: 'タネ5',
+      current: showTane ? taneCards.length : 0,
+      target: 5,
+      cards: showTane ? taneCards : [],
+      done: completedTypes.has('tane'),
+    },
+    {
+      key: 'akatan',
+      label: '赤タン',
+      current: showAkatan ? akatanCount : 0,
+      target: 3,
+      cards: showAkatan ? akatanCards : [],
+      done: completedTypes.has('akatan'),
+    },
+    {
+      key: 'aotan',
+      label: '青タン',
+      current: showAotan ? aotanCount : 0,
+      target: 3,
+      cards: showAotan ? aotanCards : [],
+      done: completedTypes.has('aotan'),
+    },
+    {
+      key: 'tanzaku',
+      label: 'タン5',
+      current: showTanzaku ? tanzakuCards.length : 0,
+      target: 5,
+      cards: showTanzaku ? tanzakuCards : [],
+      done: completedTypes.has('tanzaku'),
+    },
+    {
+      key: 'kasu',
+      label: 'カス10',
+      current: showKasu ? kasuCards.length : 0,
+      target: 10,
+      cards: showKasu ? kasuCards : [],
+      done: completedTypes.has('kasu'),
+    },
   ]
 }
 

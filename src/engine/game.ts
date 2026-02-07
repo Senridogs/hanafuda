@@ -8,6 +8,12 @@ export type MatchSource = 'hand' | 'draw' | null
 export type RoundReason = 'stop' | 'exhausted' | 'draw' | null
 export type KoiKoiDecision = 'koikoi' | 'stop'
 
+export interface RoundScoreEntry {
+  readonly round: number
+  readonly player1Points: number
+  readonly player2Points: number
+}
+
 export interface KoiKoiGameState extends GameState {
   readonly config: GameConfig
   readonly pendingMatches: readonly HanafudaCard[]
@@ -16,6 +22,7 @@ export interface KoiKoiGameState extends GameState {
   readonly roundPoints: number
   readonly roundReason: RoundReason
   readonly roundStarterIndex: 0 | 1
+  readonly roundScoreHistory: readonly RoundScoreEntry[]
 }
 
 function createPlayer(id: Player['id'], name: string, score = 0): Player {
@@ -86,6 +93,7 @@ function dealRound(
   config: GameConfig,
   round: number,
   starterIndex: 0 | 1,
+  prevRoundScoreHistory: readonly RoundScoreEntry[] = [],
 ): KoiKoiGameState {
   let dealt = dealCards(shuffleDeck(createDeck()))
   let retries = 0
@@ -129,6 +137,7 @@ function dealRound(
     roundPoints: 0,
     roundReason: null,
     roundStarterIndex: starterIndex,
+    roundScoreHistory: prevRoundScoreHistory,
   }
 }
 
@@ -156,6 +165,14 @@ function finishRound(
     nextPlayers = replacePlayer(nextPlayers, index, { ...winner, score: winner.score + points })
   }
 
+  // Record round score history
+  const roundEntry: RoundScoreEntry = {
+    round: state.round,
+    player1Points: winnerId === 'player1' ? points : 0,
+    player2Points: winnerId === 'player2' ? points : 0,
+  }
+  const nextRoundScoreHistory = [...state.roundScoreHistory, roundEntry]
+
   const maxRoundsReached = state.round >= state.config.maxRounds
   const targetReached = nextPlayers.some((player) => player.score >= state.config.targetScore)
   if (maxRoundsReached || targetReached) {
@@ -167,6 +184,7 @@ function finishRound(
       roundWinner: winnerId,
       roundPoints: points,
       roundReason: reason,
+      roundScoreHistory: nextRoundScoreHistory,
     }
   }
 
@@ -178,6 +196,7 @@ function finishRound(
     roundWinner: winnerId,
     roundPoints: points,
     roundReason: reason,
+    roundScoreHistory: nextRoundScoreHistory,
   }
 }
 
@@ -551,5 +570,5 @@ export function startNextRound(state: KoiKoiGameState): KoiKoiGameState {
     { ...state.players[0], hand: [], captured: [], completedYaku: [] },
     { ...state.players[1], hand: [], captured: [], completedYaku: [] },
   ]
-  return dealRound(carryPlayers, state.config, nextRound, nextStarterIndex)
+  return dealRound(carryPlayers, state.config, nextRound, nextStarterIndex, state.roundScoreHistory)
 }

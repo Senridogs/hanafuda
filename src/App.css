@@ -1,18 +1,78 @@
 .app {
   --card-width: clamp(64px, 6.8vw, 88px);
+  --mobile-yaku-font-strip-title: 10px;
+  --mobile-yaku-font-strip-note: 9px;
+  --mobile-yaku-font-chip: 9px;
+  --mobile-yaku-font-header: 11px;
+  --mobile-yaku-font-mini: 9px;
+  --mobile-yaku-font-empty: 12px;
+  --mobile-yaku-font-target: 10px;
+  --mobile-yaku-font-target-sub: 9px;
+  --mobile-yaku-font-grid-title: 9px;
+  --mobile-yaku-font-grid-cell: 12px;
+  --mobile-yaku-font-grid-empty: 8px;
   height: 100dvh;
   padding: clamp(10px, 1.4vw, 18px);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: clamp(8px, 1.2vh, 14px);
   overflow: hidden;
-  color: #f2ece1;
+  color: #2a2510;
   user-select: none;
   -webkit-user-select: none;
   background:
-    radial-gradient(circle at 18% 14%, rgb(248 194 104 / 20%), transparent 38%),
-    radial-gradient(circle at 82% 84%, rgb(30 122 113 / 20%), transparent 42%),
-    linear-gradient(165deg, #0f1a1a 0%, #121926 45%, #19191f 100%);
+    /* 四隅のビネット（座敷の奥行き） */
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgb(40 32 10 / 30%) 100%),
+    /* 行灯の温かな灯り */
+    radial-gradient(ellipse at 35% 30%, rgb(255 240 180 / 14%), transparent 50%),
+    radial-gradient(ellipse at 68% 72%, rgb(255 235 170 / 10%), transparent 45%),
+    /* い草の横線（主役・はっきりした等間隔の筋） */
+    repeating-linear-gradient(
+      0deg,
+      rgb(150 138 55 / 24%) 0px,
+      transparent 1px,
+      transparent 4px,
+      rgb(150 138 55 / 24%) 5px
+    ),
+    /* い草の微細な縦筋（控えめ） */
+    repeating-linear-gradient(
+      90deg,
+      rgb(130 120 45 / 7%) 0px,
+      transparent 1px,
+      transparent 8px
+    ),
+    /* 畳縁・横帯（金縁付き濃緑） */
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 180px,
+      rgb(175 150 60 / 70%) 180px,
+      rgb(14 45 25 / 92%) 181px,
+      rgb(20 55 32 / 90%) 183px,
+      rgb(28 68 38 / 85%) 186px,
+      rgb(20 55 32 / 90%) 189px,
+      rgb(14 45 25 / 92%) 191px,
+      rgb(175 150 60 / 70%) 192px,
+      transparent 192px,
+      transparent 372px
+    ),
+    /* 畳縁・縦帯（金縁付き濃緑） */
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px,
+      transparent 280px,
+      rgb(175 150 60 / 70%) 280px,
+      rgb(14 45 25 / 92%) 281px,
+      rgb(20 55 32 / 90%) 283px,
+      rgb(28 68 38 / 85%) 286px,
+      rgb(20 55 32 / 90%) 289px,
+      rgb(14 45 25 / 92%) 291px,
+      rgb(175 150 60 / 70%) 292px,
+      transparent 292px,
+      transparent 572px
+    ),
+    /* 畳の基調色（落ち着いた黄金色） */
+    linear-gradient(170deg, #bfb472 0%, #c7bc7e 45%, #b8ad6a 100%);
 }
 
 .app.chrome-collapsed {
@@ -26,18 +86,33 @@
   min-height: 0;
 }
 
-.chrome-toggle-row {
-  display: flex;
-  justify-content: flex-end;
-  min-height: 0;
-}
 
 .chrome-toggle-button {
-  padding: 6px 12px;
+  padding: 3px 8px;
   border-radius: 999px;
   border: 1px solid rgb(255 226 173 / 30%);
   background: rgb(0 0 0 / 35%);
-  font-size: 0.8rem;
+  font-size: 0.65rem;
+}
+
+.fullscreen-button {
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 226 173 / 30%);
+  background: rgb(0 0 0 / 35%);
+  font-size: 0.65rem;
+}
+
+.fullscreen-button.active {
+  border-color: rgb(255 180 140 / 50%);
+  background: rgb(80 30 10 / 45%);
+}
+
+.chrome-toggle-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 0;
 }
 
 .topbar {
@@ -56,7 +131,7 @@
 
 .topbar p {
   margin: 4px 0 0;
-  color: #d8d2c2;
+  color: #5a5a5a;
 }
 
 .topbar-actions {
@@ -261,37 +336,61 @@
 
 .board-center {
   container-type: size;
-  --board-card-gap: clamp(3px, 1.1cqw, 12px);
-  --board-rack-padding: clamp(4px, 1.35cqw, 12px);
-  /* X軸: 場札8枚分 + 7つのギャップ + 両端パディング */
-  --board-card-width-fit-x: calc((100cqw - (var(--board-rack-padding) * 2) - (var(--board-card-gap) * 7)) / 8);
-  /* Y軸: 手札ラック×2 + 場札ラック(2段) = カード4枚分の高さ (1.64 * 4 = 6.56) */
-  /* 余白: パディング(ラック3つ×上下)×2 + ボードパディング×2 + ギャップ(2つ分) + 場札内ギャップ */
-  --board-vertical-padding: calc((var(--board-rack-padding) * 6) +
-      /* 3つのラック × 上下パディング */
-      32px +
-      /* ボードセンターのパディング (16px × 2) */
-      16px
-      /* ボードセンター内のギャップとマージン */
-    );
+  --board-card-gap: clamp(1px, 0.5cqw, 4px);
+  --board-rack-padding: 0px;
+  /* X軸: 場札8枚分 + 7つのギャップ */
+  --board-card-width-fit-x: calc((100cqw - (var(--board-card-gap) * 7)) / 8);
+  /* Y軸余白を最小化 */
+  --board-vertical-padding: 8px;
   --board-card-width-fit-y: calc((100cqh - var(--board-vertical-padding)) / 6.56);
   --board-card-width-fit: min(var(--board-card-width-fit-x), var(--board-card-width-fit-y));
-  --board-card-width: clamp(32px, var(--board-card-width-fit), 110px);
+  --board-card-width: clamp(32px, var(--board-card-width-fit), 130px);
+  --board-card-height: calc(var(--board-card-width) * 839 / 512);
+  --board-hand-slot-count: 8;
+  --board-hand-overlap-step: 0.75;
+  --board-hand-min-width: calc(var(--board-card-width) + ((var(--board-hand-slot-count) - 1) * var(--board-card-width) * var(--board-hand-overlap-step)));
+  --board-field-base-column-count: 4;
+  --board-field-min-width: calc((var(--board-card-width) * var(--board-field-base-column-count)) + (var(--board-card-gap) * (var(--board-field-base-column-count) - 1)));
+  --mobile-yaku-card-scale: 2.25;
+  --mobile-yaku-row-height-base: clamp(36px, calc((var(--board-card-width) * 0.98) + 2px), 58px);
+  --mobile-yaku-row-height: calc(var(--mobile-yaku-row-height-base) * var(--mobile-yaku-card-scale));
+  --mobile-yaku-card-vertical-padding: clamp(0px, calc(var(--mobile-yaku-row-height-base) * 0.01), 1px);
+  --mobile-yaku-card-base-height: calc(var(--mobile-yaku-row-height-base) - (var(--mobile-yaku-card-vertical-padding) * 2));
+  --mobile-yaku-card-height: calc(var(--mobile-yaku-card-base-height) * var(--mobile-yaku-card-scale));
+  --mobile-yaku-card-base-width: calc(var(--mobile-yaku-card-base-height) * 512 / 839);
+  --mobile-yaku-card-width: calc(var(--mobile-yaku-card-base-width) * var(--mobile-yaku-card-scale));
+  --mobile-yaku-card-size: clamp(26px, calc(var(--board-card-width) * 0.72), 37px);
+  --mobile-yaku-card-height: calc(var(--mobile-yaku-card-size) * 839 / 512);
+  --mobile-yaku-row-height: var(--mobile-yaku-card-height);
+  --mobile-yaku-card-stack-step: calc(var(--mobile-yaku-card-size) * 0.34);
+  --mobile-yaku-card-strip-width: calc(var(--mobile-yaku-card-size) + (var(--mobile-yaku-card-stack-step) * 4));
+  --mobile-yaku-card-gap: clamp(1px, calc(var(--mobile-yaku-card-width) * 0.08), 3px);
+  --mobile-yaku-section-gap: clamp(2px, calc(var(--mobile-yaku-card-base-width) * 0.08), 4px);
+  --mobile-yaku-header-height: clamp(11px, calc(var(--mobile-yaku-card-base-width) * 0.5), 15px);
+  --mobile-yaku-section-padding-top: clamp(3px, calc(var(--mobile-yaku-card-base-width) * 0.14), 5px);
+  --mobile-yaku-section-padding-bottom: clamp(5px, calc(var(--mobile-yaku-card-base-width) * 0.29), 9px);
+  --mobile-yaku-section-padding-inline: clamp(4px, calc(var(--mobile-yaku-card-base-width) * 0.22), 8px);
+  --mobile-yaku-font-strip-title: clamp(9px, calc(var(--mobile-yaku-card-base-width) * 0.36), 11px);
+  --mobile-yaku-font-strip-note: clamp(8px, calc(var(--mobile-yaku-card-base-width) * 0.32), 10px);
+  --mobile-yaku-font-chip: clamp(8px, calc(var(--mobile-yaku-card-base-width) * 0.33), 10px);
+  --mobile-yaku-font-header: clamp(10px, calc(var(--mobile-yaku-card-base-width) * 0.4), 13px);
+  --mobile-yaku-font-mini: clamp(9px, calc(var(--mobile-yaku-card-base-width) * 0.34), 11px);
+  --mobile-yaku-font-empty: clamp(10px, calc(var(--mobile-yaku-card-base-width) * 0.46), 13px);
+  --mobile-yaku-font-target: clamp(8px, calc(var(--mobile-yaku-card-base-width) * 0.34), 11px);
+  --mobile-yaku-font-target-sub: clamp(7px, calc(var(--mobile-yaku-card-base-width) * 0.3), 9px);
+  --mobile-yaku-target-label-width: 3.2em;
+  --mobile-yaku-font-grid-title: clamp(8px, calc(var(--mobile-yaku-card-base-width) * 0.32), 10px);
+  --mobile-yaku-font-grid-cell: clamp(9px, calc(var(--mobile-yaku-card-base-width) * 0.44), 13px);
+  --mobile-yaku-font-grid-empty: clamp(7px, calc(var(--mobile-yaku-card-base-width) * 0.28), 9px);
   display: flex;
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  border-radius: 20px;
-  border: 1px solid rgb(255 223 179 / 24%);
-  background:
-    linear-gradient(180deg, rgb(10 16 18 / 68%), rgb(14 20 29 / 75%)),
-    repeating-linear-gradient(-35deg,
-      rgb(255 255 255 / 2%) 0,
-      rgb(255 255 255 / 2%) 2px,
-      transparent 2px,
-      transparent 10px);
-  padding: 16px;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 4%);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .board-center h2 {
@@ -307,16 +406,15 @@
   gap: var(--board-card-gap);
   justify-content: flex-start;
   align-content: flex-start;
-  border-radius: 14px;
-  padding: var(--board-rack-padding);
-  /* カードサイズに応じて自動調整 */
-  overflow: hidden;
-  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+  padding: 0;
+  overflow: visible;
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 
 .card-rack.active-turn {
-  background-color: rgb(100 180 255 / 12%);
-  box-shadow: inset 0 0 0 2px rgb(100 180 255 / 35%);
+  /* 背景ハイライトを削除 */
 }
 
 .card-rack.hand-fan {
@@ -339,31 +437,56 @@
 .card-rack.hand-flat {
   justify-content: center;
   flex-wrap: nowrap;
-  gap: clamp(2px, 0.8cqw, 5px);
+  gap: 0;
   overflow: visible;
+}
+
+/* 手札を1/4重ねて表示 */
+.card-rack.hand-flat>* {
+  margin-left: calc(var(--board-card-width) * -0.25);
+}
+
+.card-rack.hand-flat>*:first-child {
+  margin-left: 0;
 }
 
 .opponent-rack,
 .player-rack {
-  background: rgb(6 10 15 / 36%);
-  border: 1px solid rgb(249 221 170 / 12%);
+  background: transparent;
+  border: none;
+  width: 100%;
+  min-width: var(--board-hand-min-width);
+  min-height: var(--board-card-height);
+}
+
+/* モバイルで相手の手札を上にずらす */
+.board-center.mobile .opponent-rack.hand-flat {
+  position: relative;
+  margin-top: calc(var(--board-card-width) * -0.7);
+  background: transparent !important;
+}
+
+/* カード単位で上部をグラデーションで隠す */
+.board-center.mobile .opponent-rack.hand-flat .card-tile {
+  mask-image: linear-gradient(to bottom, transparent 0%, transparent 30%, black 60%, black 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 30%, black 60%, black 100%);
 }
 
 .field-rack {
   display: grid;
-  grid-template-columns: var(--board-card-width) 1fr;
+  grid-template-columns: var(--board-card-width) minmax(var(--board-field-min-width), 1fr);
   align-items: start;
-  gap: 10px;
-  background: rgb(56 36 22 / 20%);
-  border: 1px solid rgb(255 194 116 / 24%);
-  margin-bottom: 2px;
-  border-radius: 14px;
-  padding: var(--board-rack-padding);
+  gap: 6px;
+  background: transparent;
+  border: none;
+  margin-bottom: 0;
+  border-radius: 0;
+  padding: 0;
 }
 
 .field-rack-inner {
   display: grid;
-  grid-template-rows: repeat(2, auto);
+  grid-template-rows: repeat(2, var(--board-card-height));
   grid-auto-flow: column;
   grid-auto-columns: var(--board-card-width);
   justify-content: start;
@@ -372,6 +495,8 @@
   gap: var(--board-card-gap);
   padding: var(--board-rack-padding);
   margin: 0;
+  min-width: var(--board-field-min-width);
+  min-height: calc((var(--board-card-height) * 2) + var(--board-card-gap));
   /* カードサイズに応じて自動調整 */
   background: transparent;
   border: 0;
@@ -399,8 +524,8 @@
 
 button.mobile-yaku-strip {
   border-radius: 12px;
-  border: 1px solid rgb(255 219 163 / 26%);
-  background: linear-gradient(180deg, rgb(8 16 22 / 74%), rgb(12 20 30 / 82%));
+  border: 1px solid transparent;
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -423,19 +548,19 @@ button.mobile-yaku-strip.stack .mobile-yaku-strip-list {
 }
 
 button.mobile-yaku-strip.active {
-  border-color: rgb(249 176 98 / 74%);
-  box-shadow: 0 0 0 2px rgb(249 176 98 / 20%);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .mobile-yaku-strip-title {
-  font-size: 0.71rem;
+  font-size: var(--mobile-yaku-font-strip-title);
   color: #f3dfbe;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .mobile-yaku-strip-note {
-  font-size: 0.62rem;
+  font-size: var(--mobile-yaku-font-strip-note);
   letter-spacing: 0.06em;
   color: #cdbb9c;
 }
@@ -448,48 +573,209 @@ button.mobile-yaku-strip.active {
 }
 
 .mobile-yaku-chip {
-  font-size: 0.62rem;
+  font-size: var(--mobile-yaku-font-chip);
   line-height: 1.2;
   padding: 3px 4px;
   border-radius: 6px;
   color: #d6e2e5;
-  border: 1px solid rgb(124 171 164 / 36%);
-  background: rgb(28 66 66 / 34%);
+  border: 1px solid transparent;
+  background: transparent;
   word-break: break-word;
 }
 
 .mobile-yaku-chip.done {
   color: #ffe2ad;
-  border-color: rgb(255 194 111 / 64%);
-  background: rgb(127 73 24 / 30%);
+  border-color: transparent;
+  background: transparent;
 }
 
 .mobile-yaku-chip.empty {
   opacity: 0.8;
 }
 
-button.mobile-yaku-grid-section {
+.mobile-yaku-grid-section {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 6px 8px;
   width: 100%;
-  border: 1px solid rgb(255 223 179 / 18%);
+  border: 1px solid transparent;
   border-radius: 10px;
-  background: rgb(20 30 38 / 50%);
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  background: transparent;
 }
 
-button.mobile-yaku-grid-section:hover,
-button.mobile-yaku-grid-section:focus-visible {
-  background: rgb(35 50 60 / 60%);
-  border-color: rgb(255 223 179 / 28%);
+/* PC-style mobile yaku layout */
+.mobile-yaku-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mobile-yaku-section-gap);
+  width: 100%;
+  align-self: stretch;
+  padding:
+    var(--mobile-yaku-section-padding-top)
+    var(--mobile-yaku-section-padding-inline)
+    var(--mobile-yaku-section-padding-bottom);
+  border-radius: 12px;
+  border: 1px solid rgb(249 221 170 / 24%);
+  background: transparent;
+  /* カードサイズに追従して枠サイズを可変化 */
+  min-height: calc(
+    (var(--mobile-yaku-row-height) * 3) +
+    (var(--mobile-yaku-section-gap) * 3) +
+    var(--mobile-yaku-header-height) +
+    var(--mobile-yaku-section-padding-top) +
+    var(--mobile-yaku-section-padding-bottom)
+  );
+  height: auto;
+  overflow: visible;
 }
 
-button.mobile-yaku-grid-section:active {
-  background: rgb(45 65 80 / 60%);
+.mobile-yaku-section.active {
+  border-color: rgb(249 176 98 / 72%);
+  box-shadow: none;
+}
+
+.mobile-yaku-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--mobile-yaku-header-height);
+  font-size: var(--mobile-yaku-font-header);
+  font-weight: 700;
+  color: #4f4f4f;
+  padding: 0 2px;
+}
+
+.mobile-mini-score {
+  font-size: var(--mobile-yaku-font-mini);
+  color: #5a5a5a;
+  letter-spacing: 0.04em;
+}
+
+.mobile-yaku-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: var(--mobile-yaku-row-height);
+  overflow: visible;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.mobile-yaku-cards {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0;
+  width: auto;
+  max-width: var(--mobile-yaku-card-strip-width);
+  min-width: 0;
+  height: var(--mobile-yaku-card-height);
+  box-sizing: border-box;
+  padding-block: 0;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.mobile-yaku-cards.stack {
+  width: auto;
+}
+
+.mobile-yaku-card-slot {
+  width: var(--mobile-yaku-card-width);
+  min-width: var(--mobile-yaku-card-width);
+  height: 100%;
+  aspect-ratio: 512 / 839;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
+  flex: 0 0 auto;
+}
+
+.mobile-yaku-empty-slot {
+  font-size: var(--mobile-yaku-font-empty);
+  color: #c8b592;
+}
+
+.mobile-yaku-targets {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mobile-yaku-target-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 0;
+  max-width: calc(50% - 4px);
+}
+
+.mobile-yaku-target-group:only-child {
+  max-width: 100%;
+}
+
+.mobile-yaku-target-list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(3, minmax(0, auto));
+  grid-auto-columns: max-content;
+  justify-content: start;
+  align-content: start;
+  gap: 3px 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-yaku-target {
+  font-size: var(--mobile-yaku-font-target);
+  color: #f4f4f4;
+  padding: 1px 3px;
+  border-radius: 4px;
+  border: 1px solid rgb(78 78 78 / 58%);
+  background: rgb(66 66 66 / 62%);
+  line-height: 1.2;
+  display: grid;
+  grid-template-columns: var(--mobile-yaku-target-label-width) auto;
+  align-items: baseline;
+  column-gap: 2px;
+  min-width: 0;
+}
+
+.mobile-yaku-target-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-yaku-target-count {
+  white-space: nowrap;
+  text-align: right;
+}
+
+.mobile-yaku-target.active {
+  color: #fcfcfc;
+  border-color: rgb(98 98 98 / 68%);
+  background: rgb(84 84 84 / 66%);
+}
+
+.mobile-yaku-target.done {
+  color: #fff6dd;
+  border-color: rgb(104 104 104 / 72%);
+  background: rgb(92 92 92 / 70%);
+}
+
+.mobile-yaku-target.sub {
+  font-size: var(--mobile-yaku-font-target-sub);
+  opacity: 0.9;
 }
 
 .mobile-yaku-grid-header {
@@ -504,17 +790,11 @@ button.mobile-yaku-grid-section:active {
 }
 
 .mobile-yaku-grid-title {
-  font-size: 0.68rem;
+  font-size: var(--mobile-yaku-font-grid-title);
   font-weight: 700;
   color: #f3dfbe;
   letter-spacing: 0.04em;
   flex: 1;
-}
-
-.mobile-yaku-grid-expand-hint {
-  font-size: 0.55rem;
-  color: #a0a8b0;
-  margin-left: auto;
 }
 
 .mobile-yaku-grid {
@@ -526,42 +806,70 @@ button.mobile-yaku-grid-section:active {
   /* 3行分の高さを確保（22px × 3 + gap） */
 }
 
+.mobile-yaku-grid-4col {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  min-height: 24px;
+}
+
+.mobile-yaku-column {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 20px;
+}
+
 .mobile-yaku-grid-cell {
-  flex: 0 0 calc((100% - 9px) / 4);
-  /* 4列固定幅 */
-  height: 22px;
-  /* 高さ固定 */
+  flex: 0 0 auto;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 0.55rem;
-  line-height: 1;
-  padding: 2px 3px;
-  border-radius: 5px;
+  gap: 6px;
+  font-size: var(--mobile-yaku-font-grid-cell);
+  line-height: 1.3;
+  padding: 8px 12px;
+  border-radius: 8px;
   color: #8a9aaa;
-  border: 1px solid rgb(100 130 140 / 22%);
-  background: rgb(20 32 40 / 36%);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  border: 1px solid transparent;
+  background: transparent;
 }
 
 .mobile-yaku-grid-cell.has-progress {
   color: #d6e2e5;
-  border-color: rgb(124 171 164 / 36%);
-  background: rgb(28 66 66 / 34%);
+  border-color: transparent;
+  background: transparent;
 }
 
 .mobile-yaku-grid-cell.done {
   color: #ffe2ad;
-  border-color: rgb(255 194 111 / 64%);
-  background: rgb(127 73 24 / 30%);
+  border-color: transparent;
+  background: transparent;
+}
+
+.mobile-yaku-card-icon {
+  width: var(--mobile-yaku-card-size);
+  min-width: var(--mobile-yaku-card-size);
+  height: var(--mobile-yaku-card-height);
+  aspect-ratio: 512 / 839;
+  border-radius: 3px;
+  object-fit: contain;
+  background: transparent;
+  flex: 0 0 auto;
+  margin-bottom: 0;
+  box-shadow: none;
+}
+
+.mobile-yaku-cards.stack .mobile-yaku-card-icon + .mobile-yaku-card-icon {
+  margin-left: calc(var(--mobile-yaku-card-stack-step) - var(--mobile-yaku-card-size));
+}
+
+.mobile-yaku-label {
+  white-space: nowrap;
 }
 
 .mobile-yaku-grid-empty {
-  font-size: 0.6rem;
+  font-size: var(--mobile-yaku-font-grid-empty);
   color: #8a9aaa;
   padding: 4px 0;
 }
@@ -693,9 +1001,24 @@ button.mobile-yaku-grid-section:active {
   font-size: 1rem;
 }
 
-.panel-score {
-  margin: 8px 0 10px;
-  color: #efd9b4;
+.panel-player-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.yaku-panel .panel-player-name {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #4f4f4f;
+  font-weight: 700;
+}
+
+.panel-mini-score {
+  font-size: 0.68rem;
+  color: #5a5a5a;
+  letter-spacing: 0.04em;
 }
 
 .yaku-panel ul {
@@ -750,8 +1073,8 @@ button.mobile-yaku-grid-section:active {
   border-radius: 4px;
   object-fit: contain;
   object-position: center;
-  background: #fff;
-  box-shadow: 0 8px 12px rgb(0 0 0 / 28%);
+  background: transparent;
+  box-shadow: none;
 }
 
 .progress-matrix {
@@ -774,24 +1097,45 @@ button.mobile-yaku-grid-section:active {
 .progress-entry-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 4px;
+  gap: 4px;
+  margin-bottom: 2px;
+  line-height: 1;
 }
 
 .progress-card-strip {
+  --progress-card-width: clamp(33px, 2.6vw, 45px);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 5px;
+  align-items: flex-start;
+  overflow: hidden;
+}
+
+.progress-card-strip > * {
+  width: var(--progress-card-width);
+  aspect-ratio: 512 / 839;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.progress-entry.kasu-entry .progress-card-strip {
+  gap: 0;
+}
+
+.progress-entry.kasu-entry .progress-card-strip > * + * {
+  margin-left: calc(var(--progress-card-width) * -0.72);
+}
+
+.progress-card-slot {
+  border: 1px dashed rgb(226 207 168 / 26%);
+  background: rgb(255 239 207 / 6%);
 }
 
 .progress-card-strip img {
-  width: clamp(33px, 2.6vw, 45px);
-  aspect-ratio: 512 / 839;
-  border-radius: 4px;
   object-fit: contain;
   object-position: center;
-  background: #fff;
-  box-shadow: 0 6px 10px rgb(0 0 0 / 30%);
+  background: transparent;
+  box-shadow: none;
 }
 
 .matrix-token-row {
@@ -839,12 +1183,16 @@ button.mobile-yaku-grid-section:active {
 .matrix-target {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 8px;
-  font-size: 0.75rem;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 0.65rem;
   color: #c8dcd5;
   border: 1px solid rgb(132 181 171 / 36%);
   background: rgb(33 73 72 / 28%);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .matrix-target.done {
@@ -944,6 +1292,43 @@ button.mobile-yaku-grid-section:active {
     0 0 22px rgb(245 186 94 / 50%);
 }
 
+/* 場札のハイライト時は背景オーバーレイより上に表示（タップ可能にする） */
+.field-rack-inner .card-tile.highlighted {
+  position: relative;
+  z-index: 201;
+}
+
+.field-empty-slot-target {
+  width: var(--board-card-width);
+  aspect-ratio: 512 / 839;
+  border-radius: 8px;
+  border: 2px solid rgb(247 192 102 / 86%);
+  background: rgb(255 188 98 / 12%);
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  position: relative;
+  z-index: 201;
+  box-shadow:
+    0 0 0 1px rgb(255 222 171 / 34%),
+    0 0 18px rgb(245 178 82 / 48%);
+  animation: field-empty-slot-pulse 1.15s ease-in-out infinite;
+}
+
+.field-empty-slot-target::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 6px;
+  border: 1px solid rgb(255 226 176 / 52%);
+  pointer-events: none;
+}
+
+.field-empty-slot-target:focus-visible {
+  outline: 2px solid rgb(255 214 150 / 90%);
+  outline-offset: 2px;
+}
+
 .card-tile.dimmed {
   opacity: 0.34;
   filter: grayscale(0.3) brightness(0.86);
@@ -972,6 +1357,24 @@ button.mobile-yaku-grid-section:active {
 
   50% {
     filter: brightness(1.16);
+  }
+}
+
+@keyframes field-empty-slot-pulse {
+
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgb(255 222 171 / 34%),
+      0 0 16px rgb(245 178 82 / 42%);
+    filter: brightness(1);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 1px rgb(255 230 188 / 52%),
+      0 0 28px rgb(245 186 94 / 62%);
+    filter: brightness(1.08);
   }
 }
 
@@ -1115,25 +1518,155 @@ button:hover {
 
 .turn-callout-layer {
   position: fixed;
-  left: 50%;
-  top: 14%;
-  transform: translateX(-50%);
-  z-index: 34;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 42;
   pointer-events: none;
 }
 
-.turn-callout {
-  margin: 0;
-  padding: 9px 18px;
+.turn-callout-burst {
+  --callout-accent-rgb: 255 197 118;
+  --callout-glow-rgb: 255 174 94;
+  --callout-soft-rgb: 255 235 193;
+  --callout-burst-duration: 2.4s;
+  position: relative;
+  min-width: clamp(300px, 52vw, 760px);
+  min-height: clamp(180px, 30vh, 320px);
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.turn-callout-burst.koikoi {
+  --callout-accent-rgb: 255 204 126;
+  --callout-glow-rgb: 255 161 65;
+  --callout-soft-rgb: 255 241 210;
+}
+
+.turn-callout-burst.stop {
+  --callout-accent-rgb: 255 136 108;
+  --callout-glow-rgb: 255 92 79;
+  --callout-soft-rgb: 255 228 220;
+}
+
+.turn-callout-radiance,
+.turn-callout-flash,
+.turn-callout-ring,
+.turn-callout-sparks {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.turn-callout-radiance {
+  width: clamp(280px, 56vw, 860px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgb(var(--callout-glow-rgb) / 42%) 0%, rgb(var(--callout-glow-rgb) / 28%) 34%, rgb(var(--callout-glow-rgb) / 0%) 72%),
+    radial-gradient(circle, rgb(var(--callout-soft-rgb) / 34%) 0%, rgb(var(--callout-soft-rgb) / 0%) 68%);
+  filter: blur(2px);
+}
+
+.turn-callout-flash {
+  width: clamp(210px, 38vw, 560px);
+  height: clamp(86px, 12vw, 138px);
   border-radius: 999px;
-  border: 1px solid rgb(255 224 172 / 66%);
-  background: linear-gradient(180deg, rgb(80 45 19 / 88%), rgb(49 29 15 / 88%));
+  background: radial-gradient(ellipse at center, rgb(var(--callout-soft-rgb) / 56%), rgb(var(--callout-soft-rgb) / 0%) 70%);
+  mix-blend-mode: screen;
+}
+
+.turn-callout-ring {
+  width: clamp(200px, 34vw, 520px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1px solid rgb(var(--callout-accent-rgb) / 52%);
+  box-shadow: 0 0 20px rgb(var(--callout-glow-rgb) / 34%);
+  animation: turn-callout-ring-ping var(--callout-burst-duration) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.turn-callout-ring.inner {
+  width: clamp(148px, 24vw, 340px);
+  border-color: rgb(var(--callout-soft-rgb) / 66%);
+  box-shadow: 0 0 16px rgb(var(--callout-soft-rgb) / 28%);
+  animation-delay: 0.12s;
+}
+
+.turn-callout-sparks {
+  width: clamp(240px, 44vw, 640px);
+  aspect-ratio: 1;
+}
+
+.turn-callout-sparks span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 40%;
+  border-radius: 999px;
+  transform-origin: center calc(100% - 3px);
+  background: linear-gradient(180deg, rgb(var(--callout-soft-rgb) / 0%), rgb(var(--callout-soft-rgb) / 95%) 36%, rgb(var(--callout-accent-rgb) / 0%) 100%);
+  animation: turn-callout-spark-shoot calc(var(--callout-burst-duration) * 0.82) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.turn-callout-sparks span:nth-child(1) {
+  --spark-rotation: 0deg;
+  animation-delay: 0s;
+}
+
+.turn-callout-sparks span:nth-child(2) {
+  --spark-rotation: 45deg;
+  animation-delay: 0.04s;
+}
+
+.turn-callout-sparks span:nth-child(3) {
+  --spark-rotation: 90deg;
+  animation-delay: 0.08s;
+}
+
+.turn-callout-sparks span:nth-child(4) {
+  --spark-rotation: 135deg;
+  animation-delay: 0.12s;
+}
+
+.turn-callout-sparks span:nth-child(5) {
+  --spark-rotation: 180deg;
+  animation-delay: 0.16s;
+}
+
+.turn-callout-sparks span:nth-child(6) {
+  --spark-rotation: 225deg;
+  animation-delay: 0.2s;
+}
+
+.turn-callout-sparks span:nth-child(7) {
+  --spark-rotation: 270deg;
+  animation-delay: 0.24s;
+}
+
+.turn-callout-sparks span:nth-child(8) {
+  --spark-rotation: 315deg;
+  animation-delay: 0.28s;
+}
+
+.turn-callout {
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  padding: clamp(14px, 2vh, 26px) clamp(26px, 4.2vw, 58px);
+  border-radius: 999px;
+  border: 2px solid rgb(var(--callout-accent-rgb) / 78%);
+  background: linear-gradient(180deg, rgb(92 50 21 / 92%), rgb(56 31 16 / 92%));
   color: #ffe5b8;
-  font-size: clamp(1rem, 2vw, 1.35rem);
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  font-size: clamp(1.35rem, 4.4vw, 3.2rem);
+  font-weight: 900;
+  letter-spacing: 0.12em;
   text-shadow: 0 2px 10px rgb(0 0 0 / 62%);
   box-shadow:
+    0 0 42px rgb(var(--callout-glow-rgb) / 42%),
     0 10px 20px rgb(0 0 0 / 36%),
     inset 0 0 0 1px rgb(255 246 221 / 18%);
   white-space: nowrap;
@@ -1145,6 +1678,38 @@ button:hover {
 
 .turn-callout.stop {
   border-color: rgb(255 136 108 / 76%);
+}
+
+@keyframes turn-callout-ring-ping {
+  0% {
+    transform: translate(-50%, -50%) scale(0.58);
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 0.9;
+  }
+
+  100% {
+    transform: translate(-50%, -50%) scale(1.38);
+    opacity: 0;
+  }
+}
+
+@keyframes turn-callout-spark-shoot {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--spark-rotation)) translateY(4px) scaleY(0.2);
+  }
+
+  14% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--spark-rotation)) translateY(-52px) scaleY(1);
+  }
 }
 
 .turn-banner-overlay {
@@ -1425,12 +1990,13 @@ button:hover {
 
   .card-rack.hand-flat {
     /* カードサイズに応じて自動調整 */
+    padding-block: 0;
     padding-inline: 4px;
     gap: clamp(2px, 0.8cqw, 5px);
   }
 
   .mobile-yaku-grid-cell {
-    font-size: 0.56rem;
+    font-size: var(--mobile-yaku-font-grid-cell);
     padding: 2px 3px;
   }
 
@@ -1449,7 +2015,7 @@ button:hover {
   }
 
   .field-rack {
-    grid-template-columns: var(--board-card-width) 1fr;
+    grid-template-columns: var(--board-card-width) minmax(var(--board-field-min-width), 1fr);
     padding: var(--board-rack-padding);
     gap: var(--board-card-gap);
   }
@@ -1469,13 +2035,12 @@ button:hover {
   }
 
   .turn-callout-layer {
-    top: 10.5%;
+    inset: 0;
   }
 
   .turn-callout {
-    padding: 8px 14px;
-    font-size: 1rem;
-    letter-spacing: 0.06em;
+    font-size: clamp(1.2rem, 7.2vw, 2.1rem);
+    letter-spacing: 0.08em;
   }
 
   .yaku-drop-card {
@@ -1485,6 +2050,16 @@ button:hover {
   .credit {
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+
+  .score-table-panel {
+    width: min(440px, calc(100vw - 16px));
+    max-height: min(62dvh, 500px);
+    padding: 8px;
+  }
+
+  .score-table {
+    max-height: calc(min(62dvh, 500px) - 60px);
   }
 }
 
@@ -1510,8 +2085,12 @@ button:hover {
     width: clamp(30px, 2.6vw, 42px);
   }
 
-  .progress-card-strip img {
-    width: clamp(28px, 2.3vw, 38px);
+  .progress-card-strip {
+    --progress-card-width: clamp(28px, 2.3vw, 38px);
+  }
+
+  .progress-entry.kasu-entry .progress-card-strip {
+    gap: 0;
   }
 }
 
@@ -1545,6 +2124,10 @@ button:hover {
     padding: 4px 8px;
   }
 
+  .score-table-panel {
+    max-height: min(58dvh, 420px);
+  }
+
   .board-center {
     --board-rack-padding: clamp(3px, 0.9cqw, 8px);
     --board-card-gap: clamp(2px, 0.85cqw, 7px);
@@ -1553,4 +2136,201 @@ button:hover {
   .credit {
     font-size: 0.72rem;
   }
+}
+
+/* Score Table */
+.score-table-panel {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 20px));
+  max-height: min(68dvh, 560px);
+  border-radius: 14px;
+  border: 1px solid rgb(255 223 179 / 26%);
+  background: linear-gradient(180deg, rgb(7 14 18 / 88%), rgb(17 23 32 / 92%));
+  box-shadow: 0 20px 32px rgb(0 0 0 / 42%);
+  padding: 10px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.score-table-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.score-table-panel-head h2 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #f2debd;
+}
+
+.score-table-close-button {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 226 173 / 30%);
+  background: rgb(0 0 0 / 34%);
+  font-size: 0.68rem;
+}
+
+.score-table {
+  margin: 0;
+  border-radius: 12px;
+  border: 1px solid rgb(255 223 179 / 22%);
+  background: linear-gradient(180deg, rgb(10 18 24 / 72%), rgb(16 24 34 / 78%));
+  padding: 10px 12px;
+  overflow: auto;
+  max-height: calc(min(68dvh, 560px) - 62px);
+}
+
+.score-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.score-table th,
+.score-table td {
+  padding: 6px 8px;
+  text-align: center;
+  border-bottom: 1px solid rgb(255 223 179 / 12%);
+}
+
+.score-table th {
+  color: #f3dfbe;
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  background: rgb(0 0 0 / 20%);
+}
+
+.score-table .score-table-header-month {
+  width: 50px;
+}
+
+.score-table .score-table-month {
+  color: #d8ceb8;
+  font-weight: 500;
+}
+
+.score-table tbody tr:last-child td {
+  border-bottom: 1px solid rgb(255 223 179 / 22%);
+}
+
+.score-table tbody tr.current-round {
+  background: rgb(100 180 255 / 10%);
+}
+
+.score-table tbody td.won {
+  color: #ffe8c0;
+  font-weight: 600;
+}
+
+.score-table tfoot tr.score-table-total td {
+  border-bottom: none;
+  padding-top: 10px;
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #f7f0e2;
+}
+
+.score-table tfoot td.leading {
+  color: #ffd280;
+  background: rgb(200 140 50 / 16%);
+  border-radius: 6px;
+}
+
+/* 手札拡大時のレイアウト維持プレースホルダー */
+.player-rack-placeholder {
+  position: relative;
+  z-index: 10;
+  opacity: 0;
+  pointer-events: auto;
+}
+
+.player-rack-placeholder .card-slot-placeholder {
+  width: var(--board-card-width);
+  height: calc(var(--board-card-width) * 839 / 512);
+  background: transparent;
+}
+
+/* 手札拡大表示 - 扇形レイアウト（他UIに影響を与えない独立オーバーレイ） */
+.player-rack.expanded {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: max(0px, calc((min(16vw, 80px) - var(--board-card-width)) * 839 / 512));
+  z-index: 200;
+  justify-content: center;
+  align-items: flex-end;
+  height: auto;
+  padding-bottom: 12vh;
+  overflow: visible;
+  background: linear-gradient(to top, rgb(0 0 0 / 85%) 0%, rgb(0 0 0 / 60%) 50%, transparent 100%);
+  pointer-events: auto;
+}
+
+.player-rack.expanded.expanded-top-aligned {
+  top: var(--expanded-rack-top);
+  bottom: 0;
+  align-items: flex-start;
+  padding-bottom: 0;
+}
+
+.player-rack.expanded>* {
+  margin-left: calc(var(--board-card-width) * -0.35);
+  --board-card-width: min(16vw, 80px);
+  transform-origin: 50% 150%;
+}
+
+.player-rack.expanded.expanded-top-aligned>* {
+  transform-origin: 50% 100%;
+}
+
+.player-rack.expanded>*:first-child {
+  margin-left: 0;
+}
+
+.player-rack.expanded>*:nth-child(1) {
+  transform: rotate(-21deg);
+}
+
+.player-rack.expanded>*:nth-child(2) {
+  transform: rotate(-14deg);
+}
+
+.player-rack.expanded>*:nth-child(3) {
+  transform: rotate(-7deg);
+}
+
+.player-rack.expanded>*:nth-child(4) {
+  transform: rotate(0deg);
+}
+
+.player-rack.expanded>*:nth-child(5) {
+  transform: rotate(7deg);
+}
+
+.player-rack.expanded>*:nth-child(6) {
+  transform: rotate(14deg);
+}
+
+.player-rack.expanded>*:nth-child(7) {
+  transform: rotate(21deg);
+}
+
+.player-rack.expanded>*:nth-child(8) {
+  transform: rotate(28deg);
+}
+
+/* 手札拡大時の背景オーバーレイ（カード以外タップで閉じる） */
+.hand-expanded-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 199;
+  background: transparent;
 }

@@ -106,6 +106,16 @@ describe('buildVisibleYakuProgressEntries', () => {
     expect(tsukimi).toBeUndefined()
   })
 
+  it('removes impossible yaku from visible list when required cards are blocked', () => {
+    const captured = cardsById(['mar-hikari', 'sep-tane'])
+    const blocked = new Set<string>(['aug-hikari'])
+    const progress = buildYakuProgressEntries(captured, calculateYaku(captured), blocked)
+    const visible = buildVisibleYakuProgressEntries(progress)
+    const tsukimi = visible.find((entry) => entry.key === 'tsukimi-zake')
+
+    expect(tsukimi).toBeUndefined()
+  })
+
   it('prioritizes 花見/月見 under 光系 row when 三光 line is visible and cards overlap', () => {
     const withSankoSide = cardsById(['mar-hikari', 'sep-tane'])
     const withSankoProgress = buildVisibleYakuProgressEntries(

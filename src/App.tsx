@@ -29,6 +29,7 @@ import {
   cancelHandSelection,
   startNextRound,
   type KoiKoiGameState,
+  type RoundScoreEntry,
 } from './engine/game'
 import { DEFAULT_CONFIG, type HanafudaCard, type Yaku } from './engine/types'
 import { getYakuTotalPoints } from './engine/yaku'
@@ -60,6 +61,8 @@ type CardMoveEffect = {
   height: number
   viaX?: number
   viaY?: number
+  viaWidth?: number
+  viaHeight?: number
   duration?: number
   toWidth?: number
   toHeight?: number
@@ -103,6 +106,94 @@ const FLICK_MIN_SPEED_PX_PER_MS = 0.28
 const FLICK_MIN_UPWARD_DELTA_PX = -10
 const TAP_MAX_DISTANCE_PX = 10
 const TAP_MAX_DURATION_MS = 300
+const FIELD_EMPTY_SLOT_TARGET_ID = '__field-empty-slot__'
+const EXPANDED_SELECTION_CANCEL_PULSE_MS = 120
+const TURN_DECISION_EFFECT_DURATION_MS = 2400
+const TURN_DECISION_EFFECT_DURATION_SECONDS = TURN_DECISION_EFFECT_DURATION_MS / 1000
+const TURN_BANNER_AFTER_KOIKOI_DELAY_MS = TURN_DECISION_EFFECT_DURATION_MS + 140
+const PC_YAKU_LIGHT_KEYS = new Set(['goko', 'shiko', 'ame-shiko', 'sanko'])
+const PC_YAKU_TANE_KEYS = new Set(['tane', 'inoshikacho', 'hanami-zake', 'tsukimi-zake'])
+const PC_YAKU_TAN_KEYS = new Set(['tanzaku', 'akatan', 'aotan'])
+const TURN_DECISION_SPARK_INDICES = [0, 1, 2, 3, 4, 5, 6, 7] as const
+
+function getPcYakuEntryRank(key: string): number {
+  if (PC_YAKU_LIGHT_KEYS.has(key)) {
+    return 0
+  }
+  if (PC_YAKU_TANE_KEYS.has(key)) {
+    return 1
+  }
+  if (PC_YAKU_TAN_KEYS.has(key)) {
+    return 2
+  }
+  if (key === 'kasu') {
+    return 3
+  }
+  return 4
+}
+
+function buildRoundPointBreakdownLines(game: KoiKoiGameState): readonly string[] | undefined {
+  if (game.roundReason !== 'stop' || !game.roundWinner) {
+    return undefined
+  }
+
+  const winnerIndex: 0 | 1 = game.roundWinner === 'player1' ? 0 : 1
+  const winner = game.players[winnerIndex]
+  const opponentIndex: 0 | 1 = winnerIndex === 0 ? 1 : 0
+  const yaku = [...winner.completedYaku].sort((a, b) => b.points - a.points)
+  const basePoints = Math.max(1, getYakuTotalPoints(winner.completedYaku))
+
+  const canApplyHighPointBonus = basePoints >= 7
+  const canApplyOpponentKoiBonus = game.koikoiCounts[opponentIndex] > 0
+  const multiplierCandidates = [
+    { highPointBonus: false, opponentKoiBonus: false },
+    { highPointBonus: true, opponentKoiBonus: false },
+    { highPointBonus: false, opponentKoiBonus: true },
+    { highPointBonus: true, opponentKoiBonus: true },
+  ].filter((candidate) => {
+    if (candidate.highPointBonus && !canApplyHighPointBonus) {
+      return false
+    }
+    if (candidate.opponentKoiBonus && !canApplyOpponentKoiBonus) {
+      return false
+    }
+    return true
+  })
+
+  const matchedMultiplier = multiplierCandidates.find((candidate) => {
+    const total =
+      basePoints
+      * (candidate.highPointBonus ? 2 : 1)
+      * (candidate.opponentKoiBonus ? 2 : 1)
+    return total === game.roundPoints
+  })
+
+  const lines: string[] = yaku.length > 0
+    ? yaku.map((item) => `${item.name}: ${item.points}文`)
+    : ['役なし: 1文']
+  lines.push(`役合計: ${basePoints}文`)
+
+  if (matchedMultiplier) {
+    const appliedMultipliers: number[] = []
+    if (matchedMultiplier.highPointBonus) {
+      lines.push('7文以上ボーナス: ×2')
+      appliedMultipliers.push(2)
+    }
+    if (matchedMultiplier.opponentKoiBonus) {
+      lines.push('相手こいこいボーナス: ×2')
+      appliedMultipliers.push(2)
+    }
+    if (appliedMultipliers.length > 0) {
+      lines.push(`最終得点: ${basePoints} × ${appliedMultipliers.join(' × ')} = ${game.roundPoints}文`)
+    } else {
+      lines.push(`最終得点: ${game.roundPoints}文`)
+    }
+    return lines
+  }
+
+  lines.push(`最終得点: ${game.roundPoints}文`)
+  return lines
+}
 
 
 function CardTile(props: {
@@ -115,10 +206,13 @@ function CardTile(props: {
   onPointerUp?: (event: PointerEvent<HTMLButtonElement>) => void
   onPointerCancel?: (event: PointerEvent<HTMLButtonElement>) => void
   selectable?: boolean
+  clickable?: boolean
   highlighted?: boolean
   dimmed?: boolean
   hidden?: boolean
   compact?: boolean
+  raised?: boolean
+  tapPulse?: boolean
   tilt?: number
   dragX?: number
   dragY?: number
@@ -137,10 +231,13 @@ function CardTile(props: {
     onPointerUp,
     onPointerCancel,
     selectable = false,
+    clickable = selectable,
     highlighted = false,
     dimmed = false,
     hidden = false,
     compact = false,
+    raised = false,
+    tapPulse = false,
     tilt = 0,
     dragX = 0,
     dragY = 0,
@@ -154,8 +251,8 @@ function CardTile(props: {
   const tileStyle: MotionStyle = {
     rotate: tilt,
     x: dragX,
-    y: dragY,
-    zIndex: dragging ? 9 : undefined,
+    y: raised ? -30 : dragY,
+    zIndex: dragging ? 9 : raised ? 10 : undefined,
     ...(extraStyle as MotionStyle),
   }
 
@@ -167,6 +264,7 @@ function CardTile(props: {
     compact ? 'compact' : '',
     hidden ? 'hidden' : '',
     dragging ? 'dragging' : '',
+    raised ? 'raised' : '',
     extraClassName,
   ]
     .filter(Boolean)
@@ -199,13 +297,22 @@ function CardTile(props: {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
-      disabled={!selectable}
+      disabled={!clickable}
       style={tileStyle}
       data-card-id={card.id}
       layout={layoutMode}
-      transition={layoutTransition}
+      animate={tapPulse ? { scale: [1, 0.95, 1] } : undefined}
+      transition={
+        tapPulse
+          ? {
+            ...(layoutTransition ?? {}),
+            duration: EXPANDED_SELECTION_CANCEL_PULSE_MS / 1000,
+            ease: HAND_LAYOUT_EASE,
+          }
+          : layoutTransition
+      }
       whileHover={selectable ? { y: -8, scale: 1.02 } : undefined}
-      whileTap={selectable ? { scale: 0.95, y: -4 } : undefined}
+      whileTap={selectable && !raised ? { scale: 0.95, y: -4 } : undefined}
     >
       <img src={getCardImageUrl(card)} alt={`${card.month}月 ${card.name}`} loading="lazy" />
     </motion.button>
@@ -225,6 +332,7 @@ function getStableCardRect(node: HTMLElement): DOMRect {
 }
 
 function YakuProgressEntry(props: {
+  entryKey: string
   label: string
   current: number
   target: number
@@ -238,10 +346,14 @@ function YakuProgressEntry(props: {
     done: boolean
   }[]
 }) {
-  const { label, current, target, cards, done, subEntries } = props
+  const { entryKey, label, current, target, cards, done, subEntries } = props
+  const isKasuEntry = entryKey === 'kasu'
+  const visibleSlots = cards.length > 0
+    ? Array.from({ length: isKasuEntry ? cards.length : target }, (_, index) => cards[index] ?? null)
+    : []
 
   return (
-    <div className="progress-entry">
+    <div className={`progress-entry ${isKasuEntry ? 'kasu-entry' : ''}`}>
       <div className="progress-entry-head">
         <span className={`matrix-target ${done ? 'done' : ''}`}>
           {label} {Math.min(current, target)}/{target}
@@ -253,15 +365,19 @@ function YakuProgressEntry(props: {
         ))}
       </div>
       {cards.length > 0 ? (
-        <div className="progress-card-strip">
-          {cards.map((card, index) => (
-            <img
-              key={`${label}-${card.id}-${index}`}
-              src={getCardImageUrl(card)}
-              alt={`${card.month}月 ${card.name}`}
-              loading="lazy"
-            />
-          ))}
+        <div className={`progress-card-strip ${isKasuEntry ? 'kasu-stack' : ''}`}>
+          {visibleSlots.map((card, index) =>
+            card ? (
+              <img
+                key={`${label}-${card.id}-${index}`}
+                src={getCardImageUrl(card)}
+                alt={`${card.month}月 ${card.name}`}
+                loading="lazy"
+              />
+            ) : (
+              <span key={`${label}-slot-${index}`} className="progress-card-slot" aria-hidden="true" />
+            ),
+          )}
         </div>
       ) : null}
     </div>
@@ -274,25 +390,46 @@ function RoleYakuPanel(props: {
   score: number
   captured: readonly HanafudaCard[]
   yaku: readonly Yaku[]
+  blockedCardIds: ReadonlySet<string>
   active: boolean
   side: 'left' | 'right'
 }) {
-  const { captureZoneId, title, score, captured, yaku, active, side } = props
-  const progressEntries = useMemo(() => buildYakuProgressEntries(captured, yaku), [captured, yaku])
+  const { captureZoneId, title, score, captured, yaku, blockedCardIds, active, side } = props
+  const progressEntries = useMemo(
+    () => buildYakuProgressEntries(captured, yaku, blockedCardIds),
+    [captured, yaku, blockedCardIds],
+  )
   const visibleProgressEntries = useMemo(
     () => buildVisibleYakuProgressEntries(progressEntries),
     [progressEntries],
   )
+  const pcOrderedProgressEntries = useMemo(
+    () => visibleProgressEntries
+      .map((entry, index) => ({ entry, index }))
+      .sort((a, b) => {
+        const rankDiff = getPcYakuEntryRank(a.entry.key) - getPcYakuEntryRank(b.entry.key)
+        if (rankDiff !== 0) {
+          return rankDiff
+        }
+        return a.index - b.index
+      })
+      .map((item) => item.entry),
+    [visibleProgressEntries],
+  )
 
   return (
     <aside className={`yaku-panel ${side} detailed ${active ? 'active' : ''}`} data-capture-zone={captureZoneId}>
-      <p className="panel-score">{title}: {score}文</p>
+      <div className="panel-player-head">
+        <h2 className="panel-player-name">{title}</h2>
+        <span className="panel-mini-score">{score}文</span>
+      </div>
 
-      {visibleProgressEntries.length > 0 ? (
+      {pcOrderedProgressEntries.length > 0 ? (
         <section className="progress-matrix">
-          {visibleProgressEntries.map((entry) => (
+          {pcOrderedProgressEntries.map((entry) => (
             <YakuProgressEntry
               key={entry.key}
+              entryKey={entry.key}
               label={entry.label}
               current={entry.current}
               target={entry.target}
@@ -309,47 +446,181 @@ function RoleYakuPanel(props: {
 
 
 function MobileYakuRow(props: {
+  captured: readonly HanafudaCard[]
   visibleProgressEntries: readonly VisibleYakuProgressState[]
   title: string
+  score: number
   active: boolean
   captureZoneId: 'player1' | 'player2'
-  onOpenDetail?: () => void
 }) {
-  const { visibleProgressEntries, title, active, captureZoneId, onOpenDetail } = props
+  const { captured, visibleProgressEntries, title, score, active, captureZoneId } = props
 
-  // サブエントリも含めてフラット化
-  const flatEntries = visibleProgressEntries.flatMap((entry) => {
-    const items = [{ key: entry.key, label: entry.label, current: entry.current, target: entry.target, done: entry.done }]
-    if (entry.subEntries) {
-      items.push(...entry.subEntries)
+  // カードタイプ別に分類
+  const hikariCards = captured.filter((c) => c.type === 'hikari')
+  const taneCards = captured.filter((c) => c.type === 'tane')
+  const tanCards = captured.filter((c) => c.type === 'tanzaku')
+  const kasuCards = captured.filter((c) => c.type === 'kasu')
+
+  // 役をタイプ別に分類
+  const hikariKeys = new Set(['goko', 'shiko', 'ame-shiko', 'sanko', 'hanami-zake', 'tsukimi-zake'])
+  const taneKeys = new Set(['inoshikacho', 'tane'])
+  const tanKeys = new Set(['akatan', 'aotan', 'tanzaku'])
+  const kasuKeys = new Set(['kasu'])
+
+  type MobileYakuEntry = {
+    key: string
+    label: string
+    current: number
+    target: number
+    done: boolean
+    sub: boolean
+  }
+
+  const expandEntries = (entries: readonly VisibleYakuProgressState[]) => entries.flatMap((entry) => ([
+    {
+      key: entry.key,
+      label: entry.label,
+      current: entry.current,
+      target: entry.target,
+      done: entry.done,
+      sub: false,
+    },
+    ...(entry.subEntries ?? []).map((subEntry) => ({
+      key: `${entry.key}:${subEntry.key}`,
+      label: subEntry.label,
+      current: subEntry.current,
+      target: subEntry.target,
+      done: subEntry.done,
+      sub: true,
+    })),
+  ]))
+
+  const hikariEntries = expandEntries(visibleProgressEntries.filter((e) => hikariKeys.has(e.key)))
+  const taneEntries = expandEntries(visibleProgressEntries.filter((e) => taneKeys.has(e.key)))
+  const tanEntries = expandEntries(visibleProgressEntries.filter((e) => tanKeys.has(e.key)))
+  const kasuEntries = expandEntries(visibleProgressEntries.filter((e) => kasuKeys.has(e.key)))
+
+  type MobileYakuGroup = {
+    key: string
+    cards: readonly HanafudaCard[]
+    entries: readonly MobileYakuEntry[]
+  }
+
+  const renderRow = (
+    groups: readonly MobileYakuGroup[],
+  ) => (
+    <div className="mobile-yaku-row">
+      <div className="mobile-yaku-targets">
+        {groups.map((group) => (
+          <div key={group.key} className="mobile-yaku-target-group">
+            <div className="mobile-yaku-cards stack">
+              {group.cards.slice(0, 5).map((card) => (
+                <img key={card.id} src={getCardImageUrl(card)} alt={card.name} className="mobile-yaku-card-icon" />
+              ))}
+            </div>
+            <div className="mobile-yaku-target-list">
+              {group.entries.slice(0, 6).map((entry) => (
+                <span
+                  key={entry.key}
+                  className={`mobile-yaku-target ${entry.done ? 'done' : ''} ${entry.current > 0 ? 'active' : ''} ${entry.sub ? 'sub' : ''}`}
+                >
+                  <span className="mobile-yaku-target-label">{entry.label}</span>
+                  <span className="mobile-yaku-target-count">{Math.min(entry.current, entry.target)}/{entry.target}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className={`mobile-yaku-section ${active ? 'active' : ''}`} data-capture-zone={captureZoneId}>
+      <div className="mobile-yaku-header">
+        <span>{title}</span>
+        <span className="mobile-mini-score">{score}文</span>
+      </div>
+      {renderRow([{ key: 'hikari', cards: hikariCards, entries: hikariEntries }])}
+      {renderRow([
+        { key: 'tane', cards: taneCards, entries: taneEntries },
+        { key: 'tan', cards: tanCards, entries: tanEntries },
+      ])}
+      {renderRow([{ key: 'kasu', cards: kasuCards, entries: kasuEntries }])}
+    </div>
+  )
+}
+
+
+
+function ScoreTable(props: {
+  roundScoreHistory: readonly RoundScoreEntry[]
+  player1Name: string
+  player2Name: string
+  player1TotalScore: number
+  player2TotalScore: number
+  currentRound: number
+  maxRounds: number
+}) {
+  const {
+    roundScoreHistory,
+    player1Name,
+    player2Name,
+    player1TotalScore,
+    player2TotalScore,
+    currentRound,
+    maxRounds,
+  } = props
+
+  // 全ラウンド（完了分 + 未完了分）を表示
+  const allRounds = Array.from({ length: maxRounds }, (_, i) => {
+    const r = i + 1
+    const entry = roundScoreHistory.find((e) => e.round === r)
+    return {
+      round: r,
+      player1Points: entry?.player1Points ?? null,
+      player2Points: entry?.player2Points ?? null,
+      isCompleted: !!entry,
+      isCurrent: r === currentRound && !entry,
     }
-    return items
   })
 
   return (
-    <button
-      type="button"
-      className="mobile-yaku-grid-section"
-      onClick={onOpenDetail}
-      aria-label={`${title}の役詳細を表示`}
-      data-capture-zone={captureZoneId}
-    >
-      <div className={`mobile-yaku-grid-header ${active ? 'active' : ''}`}>
-        <span className="mobile-yaku-grid-title">{title} - 役</span>
-        <span className="mobile-yaku-grid-expand-hint">▼</span>
-      </div>
-      <div className="mobile-yaku-grid">
-        {flatEntries.length > 0 ? (
-          flatEntries.map((entry) => (
-            <span key={entry.key} className={`mobile-yaku-grid-cell ${entry.done ? 'done' : ''} ${entry.current > 0 ? 'has-progress' : ''}`}>
-              {entry.label} {Math.min(entry.current, entry.target)}/{entry.target}
-            </span>
-          ))
-        ) : (
-          <span className="mobile-yaku-grid-empty">成立に近い役はありません</span>
-        )}
-      </div>
-    </button>
+    <div className="score-table">
+      <table>
+        <thead>
+          <tr>
+            <th className="score-table-header-month">月</th>
+            <th>{player1Name}</th>
+            <th>{player2Name}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {allRounds.map((row) => (
+            <tr key={row.round} className={row.isCurrent ? 'current-round' : ''}>
+              <td className="score-table-month">{row.round}月</td>
+              <td className={row.player1Points !== null && row.player1Points > 0 ? 'won' : ''}>
+                {row.player1Points !== null ? `${row.player1Points}文` : '-'}
+              </td>
+              <td className={row.player2Points !== null && row.player2Points > 0 ? 'won' : ''}>
+                {row.player2Points !== null ? `${row.player2Points}文` : '-'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="score-table-total">
+            <td>合計</td>
+            <td className={player1TotalScore > player2TotalScore ? 'leading' : ''}>
+              {player1TotalScore}文
+            </td>
+            <td className={player2TotalScore > player1TotalScore ? 'leading' : ''}>
+              {player2TotalScore}文
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   )
 }
 
@@ -448,15 +719,28 @@ function TurnDecisionEffect(props: {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
         >
-          <motion.p
-            className={`turn-callout ${callout.kind}`}
-            initial={{ y: 24, scale: 0.94, opacity: 0 }}
-            animate={{ y: [24, 0, 0, -14], scale: [0.94, 1.03, 1, 1], opacity: [0, 1, 1, 0] }}
-            transition={{ duration: 1.45, times: [0, 0.24, 0.74, 1], ease: [0.22, 1, 0.36, 1] }}
+          <motion.div
+            className={`turn-callout-burst ${callout.kind}`}
+            initial={{ y: 56, scale: 0.72, opacity: 0 }}
+            animate={{ y: [56, 0, 0, -24], scale: [0.72, 1.08, 1.02, 1], opacity: [0, 1, 1, 0] }}
+            transition={{
+              duration: TURN_DECISION_EFFECT_DURATION_SECONDS,
+              times: [0, 0.16, 0.82, 1],
+              ease: [0.22, 1, 0.36, 1],
+            }}
             onAnimationComplete={() => onFinish(callout.id)}
           >
-            {callout.text}
-          </motion.p>
+            <span className="turn-callout-radiance" aria-hidden="true" />
+            <span className="turn-callout-flash" aria-hidden="true" />
+            <span className="turn-callout-ring outer" aria-hidden="true" />
+            <span className="turn-callout-ring inner" aria-hidden="true" />
+            <div className="turn-callout-sparks" aria-hidden="true">
+              {TURN_DECISION_SPARK_INDICES.map((sparkIndex) => (
+                <span key={`${callout.id}-${sparkIndex}`} />
+              ))}
+            </div>
+            <p className={`turn-callout ${callout.kind}`}>{callout.text}</p>
+          </motion.div>
         </motion.div>
       ))}
     </AnimatePresence>
@@ -475,6 +759,8 @@ function CardMoveOverlayEffect(props: {
         const hasVia = effect.viaX !== undefined && effect.viaY !== undefined
         const viaX = effect.viaX ?? effect.toX
         const viaY = effect.viaY ?? effect.toY
+        const viaWidth = effect.viaWidth ?? effect.width
+        const viaHeight = effect.viaHeight ?? effect.height
         const hold = Math.min(Math.max(effect.flipHoldRatio ?? 0, 0), 0.62)
         const baseMoveDuration = effect.duration ?? 1.64
         const totalDuration = hold > 0 ? baseMoveDuration / (1 - hold) : baseMoveDuration
@@ -508,15 +794,15 @@ function CardMoveOverlayEffect(props: {
             : [effect.rotateStart ?? -4, effect.rotateEnd ?? 0]
         const widthFrames = hasVia
           ? hold > 0
-            ? [effect.width, effect.width, effect.width, effect.toWidth ?? effect.width]
-            : [effect.width, effect.width, effect.toWidth ?? effect.width]
+            ? [effect.width, effect.width, viaWidth, effect.toWidth ?? viaWidth]
+            : [effect.width, viaWidth, effect.toWidth ?? viaWidth]
           : hold > 0
             ? [effect.width, effect.width, effect.toWidth ?? effect.width]
             : [effect.width, effect.toWidth ?? effect.width]
         const heightFrames = hasVia
           ? hold > 0
-            ? [effect.height, effect.height, effect.height, effect.toHeight ?? effect.height]
-            : [effect.height, effect.height, effect.toHeight ?? effect.height]
+            ? [effect.height, effect.height, viaHeight, effect.toHeight ?? viaHeight]
+            : [effect.height, viaHeight, effect.toHeight ?? viaHeight]
           : hold > 0
             ? [effect.height, effect.height, effect.toHeight ?? effect.height]
             : [effect.height, effect.toHeight ?? effect.height]
@@ -716,6 +1002,7 @@ function App() {
   const [turnDecisionCallouts, setTurnDecisionCallouts] = useState<TurnDecisionCallout[]>([])
   const [turnBanner, setTurnBanner] = useState<{ id: number; isLocal: boolean; label: string } | null>(null)
   const turnBannerIdRef = useRef(0)
+  const turnBannerDelayTimerRef = useRef<number | null>(null)
   const prevPlayerIndexRef = useRef(game.currentPlayerIndex)
   const [animatedAddToFieldHistoryLength, setAnimatedAddToFieldHistoryLength] = useState(0)
   const [isChromeCollapsed, setIsChromeCollapsed] = useState(false)
@@ -725,11 +1012,26 @@ function App() {
     }
     return window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches
   })
+  const [isLandscapeFullscreen, setIsLandscapeFullscreen] = useState(false)
+  const [isLandscapeOrientation, setIsLandscapeOrientation] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.innerWidth > window.innerHeight
+  })
+  const appContainerRef = useRef<HTMLDivElement>(null)
   const [isMatchSurfaceVisible, setIsMatchSurfaceVisible] = useState(false)
   const [pendingHandPlaceholder, setPendingHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
   const [pendingAiHandPlaceholder, setPendingAiHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
-  const [mobileYakuDetailTarget, setMobileYakuDetailTarget] = useState<'self' | 'opponent' | null>(null)
+
+  const [isScoreTableVisible, setIsScoreTableVisible] = useState(false)
+  const [isHandExpanded, setIsHandExpanded] = useState(false)
+  const expandedHandPlaceholderRef = useRef<HTMLDivElement | null>(null)
+  const [expandedRackTop, setExpandedRackTop] = useState<number | null>(null)
+  const [expandedSelectedCardId, setExpandedSelectedCardId] = useState<string | null>(null)
+  const [expandedSelectionPulseCardId, setExpandedSelectionPulseCardId] = useState<string | null>(null)
+  const expandedSelectionPulseTimerRef = useRef<number | null>(null)
+  const pendingExpandedFieldSelectionRef = useRef<string | null>(null)
   const [handDrag, setHandDrag] = useState<HandDragState | null>(null)
+  const prevPhaseRef = useRef(game.phase)
   const rectMapRef = useRef<Map<string, DOMRect>>(new Map())
   const prevRectMapRef = useRef<Map<string, DOMRect>>(new Map())
   const lastKnownRectMapRef = useRef<Map<string, DOMRect>>(new Map())
@@ -760,22 +1062,28 @@ function App() {
     completedYaku: humanPlayer.completedYaku,
     score: humanPlayer.score,
   }
+  const aiBlockedCardIds = useMemo(() => new Set(humanPanelView.captured.map((card) => card.id)), [humanPanelView.captured])
+  const humanBlockedCardIds = useMemo(() => new Set(aiPanelView.captured.map((card) => card.id)), [aiPanelView.captured])
   const aiVisibleProgressEntries = useMemo(
-    () => buildVisibleYakuProgressEntries(buildYakuProgressEntries(aiPanelView.captured, aiPanelView.completedYaku)),
-    [aiPanelView.captured, aiPanelView.completedYaku],
+    () => buildVisibleYakuProgressEntries(buildYakuProgressEntries(aiPanelView.captured, aiPanelView.completedYaku, aiBlockedCardIds)),
+    [aiPanelView.captured, aiPanelView.completedYaku, aiBlockedCardIds],
   )
   const humanVisibleProgressEntries = useMemo(
-    () => buildVisibleYakuProgressEntries(buildYakuProgressEntries(humanPanelView.captured, humanPanelView.completedYaku)),
-    [humanPanelView.captured, humanPanelView.completedYaku],
+    () => buildVisibleYakuProgressEntries(buildYakuProgressEntries(humanPanelView.captured, humanPanelView.completedYaku, humanBlockedCardIds)),
+    [humanPanelView.captured, humanPanelView.completedYaku, humanBlockedCardIds],
   )
   const isLocalTurn = game.currentPlayerIndex === localPlayerIndex
   const isAiTurn = !isLocalTurn
   const isCpuAiTurn = multiplayer.mode === 'cpu' && isAiTurn
   const canAutoAdvance = multiplayer.mode === 'cpu' || isLocalTurn
   const isLobbyConnected = multiplayer.mode !== 'cpu' && multiplayer.connectionStatus === 'connected'
-  const interactionLocked = moveEffects.length > 0
+  const koikoiEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'koikoi')
+  const interactionLocked = moveEffects.length > 0 || koikoiEffectActive
   const humanDisplayName = multiplayer.mode === 'cpu' ? humanPlayer.name : 'あなた'
   const opponentDisplayName = multiplayer.mode === 'cpu' ? aiPlayer.name : '相手'
+  // Use PC layout only when in fullscreen AND landscape orientation
+  // Portrait fullscreen keeps mobile layout
+  const useMobileViewLayout = isMobileLayout && !(isLandscapeFullscreen && isLandscapeOrientation)
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -794,9 +1102,18 @@ function App() {
     return () => media.removeListener(onChange)
   }, [])
 
+  // Track orientation changes (for landscape fullscreen detection)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onResize = (): void => {
+      setIsLandscapeOrientation(window.innerWidth > window.innerHeight)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   useEffect(() => {
     if (!isMobileLayout) {
-      setMobileYakuDetailTarget(null)
       setHandDrag(null)
       return
     }
@@ -809,6 +1126,35 @@ function App() {
     }
   }, [interactionLocked])
 
+  const clearExpandedSelectionPulseTimer = useCallback((): void => {
+    if (expandedSelectionPulseTimerRef.current === null) {
+      return
+    }
+    window.clearTimeout(expandedSelectionPulseTimerRef.current)
+    expandedSelectionPulseTimerRef.current = null
+  }, [])
+
+  // 相手の番やinteraction lockで手札拡大と選択状態を自動解除
+  useEffect(() => {
+    if (isAiTurn || interactionLocked) {
+      clearExpandedSelectionPulseTimer()
+      setExpandedSelectionPulseCardId(null)
+      setIsHandExpanded(false)
+      setExpandedSelectedCardId(null)
+    }
+  }, [clearExpandedSelectionPulseTimer, isAiTurn, interactionLocked])
+
+  // 自分のターン開始時に手札を自動拡大（モバイルのみ、フェーズ切り替わり時のみ）
+  useEffect(() => {
+    const prevPhase = prevPhaseRef.current
+    prevPhaseRef.current = game.phase
+    // フェーズがselectHandCardに変わった時のみ自動拡大
+    if (useMobileViewLayout && !isAiTurn && !interactionLocked && game.phase === 'selectHandCard' && prevPhase !== 'selectHandCard') {
+      setIsHandExpanded(true)
+    }
+  }, [useMobileViewLayout, isAiTurn, interactionLocked, game.phase])
+
+
   useEffect(() => {
     if (multiplayer.mode === 'cpu') {
       setIsMatchSurfaceVisible(true)
@@ -820,16 +1166,107 @@ function App() {
     }
   }, [multiplayer.connectionStatus, multiplayer.mode])
 
+  // Fullscreen change event listener to sync state when user exits fullscreen via ESC/back button
+  useEffect(() => {
+    const onFullscreenChange = (): void => {
+      const isCurrentlyFullscreen = !!document.fullscreenElement
+      if (!isCurrentlyFullscreen && isLandscapeFullscreen) {
+        setIsLandscapeFullscreen(false)
+        // Unlock screen orientation when exiting fullscreen
+        if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+          try {
+            screen.orientation.unlock()
+          } catch {
+            // Ignore errors - orientation unlock not supported
+          }
+        }
+      }
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange)
+  }, [isLandscapeFullscreen])
+
+  const enterLandscapeFullscreen = useCallback(async (): Promise<void> => {
+    const container = appContainerRef.current
+    if (!container) return
+
+    try {
+      // Request fullscreen
+      await container.requestFullscreen()
+      setIsLandscapeFullscreen(true)
+
+      // Try to lock orientation to landscape (only works on supported mobile browsers)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const orientation = screen.orientation as any
+      if (orientation && typeof orientation.lock === 'function') {
+        try {
+          await orientation.lock('landscape')
+        } catch {
+          // Ignore errors - orientation lock not supported on all devices
+        }
+      }
+    } catch {
+      // Fullscreen request failed or was denied
+    }
+  }, [])
+
+  const exitLandscapeFullscreen = useCallback(async (): Promise<void> => {
+    if (!document.fullscreenElement) return
+
+    try {
+      await document.exitFullscreen()
+      setIsLandscapeFullscreen(false)
+
+      // Unlock screen orientation
+      if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+        try {
+          screen.orientation.unlock()
+        } catch {
+          // Ignore errors
+        }
+      }
+    } catch {
+      // Exit fullscreen failed
+    }
+  }, [])
+
   useEffect(() => {
     const prev = prevPlayerIndexRef.current
     prevPlayerIndexRef.current = game.currentPlayerIndex
     if (prev === game.currentPlayerIndex) return
     if (game.phase === 'roundEnd' || game.phase === 'gameOver') return
+
+    if (turnBannerDelayTimerRef.current !== null) {
+      window.clearTimeout(turnBannerDelayTimerRef.current)
+      turnBannerDelayTimerRef.current = null
+    }
+
     const isLocal = game.currentPlayerIndex === localPlayerIndex
     const label = isLocal ? 'あなたの番' : `${opponentDisplayName}の番`
-    turnBannerIdRef.current += 1
-    setTurnBanner({ id: turnBannerIdRef.current, isLocal, label })
-  }, [game.currentPlayerIndex, game.phase, localPlayerIndex, opponentDisplayName])
+    const nextBanner = {
+      id: turnBannerIdRef.current + 1,
+      isLocal,
+      label,
+    }
+    turnBannerIdRef.current = nextBanner.id
+    const latestAction = game.turnHistory[game.turnHistory.length - 1]
+    if (latestAction?.type === 'koikoi') {
+      turnBannerDelayTimerRef.current = window.setTimeout(() => {
+        setTurnBanner(nextBanner)
+        turnBannerDelayTimerRef.current = null
+      }, TURN_BANNER_AFTER_KOIKOI_DELAY_MS)
+      return
+    }
+    setTurnBanner(nextBanner)
+  }, [game.currentPlayerIndex, game.phase, game.turnHistory, localPlayerIndex, opponentDisplayName])
+
+  useEffect(() => {
+    return () => {
+      if (turnBannerDelayTimerRef.current !== null) {
+        window.clearTimeout(turnBannerDelayTimerRef.current)
+      }
+    }
+  }, [])
 
   const phaseMessage = useMemo(() => {
     if (multiplayer.mode === 'cpu') {
@@ -863,6 +1300,15 @@ function App() {
         return '対局中'
     }
   }, [game, humanPlayer.id, isCpuAiTurn, isLocalTurn, multiplayer.mode])
+  const roundPointBreakdownLines = useMemo(
+    () => buildRoundPointBreakdownLines(game),
+    [game],
+  )
+  const koikoiDecisionYakuLines = useMemo(() => {
+    return [...game.newYaku]
+      .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'ja'))
+      .map((item) => `${item.name} (${item.points}文)`)
+  }, [game.newYaku])
 
   const playerIntent: TurnIntent = useMemo(() => getTurnIntent(game.phase), [game.phase])
 
@@ -894,6 +1340,19 @@ function App() {
     () => new Set(aiPlayer.hand.map((card) => card.id)),
     [aiPlayer.hand],
   )
+  useEffect(() => {
+    if (!expandedSelectedCardId) {
+      clearExpandedSelectionPulseTimer()
+      setExpandedSelectionPulseCardId(null)
+      return
+    }
+    if (game.phase !== 'selectHandCard' || !currentHumanHandIdSet.has(expandedSelectedCardId)) {
+      clearExpandedSelectionPulseTimer()
+      setExpandedSelectionPulseCardId(null)
+      setExpandedSelectedCardId(null)
+    }
+  }, [clearExpandedSelectionPulseTimer, currentHumanHandIdSet, expandedSelectedCardId, game.phase])
+  useEffect(() => () => clearExpandedSelectionPulseTimer(), [clearExpandedSelectionPulseTimer])
   const activeMoveCardIdSet = useMemo(
     () => new Set(moveEffects.map((effect) => effect.card.id)),
     [moveEffects],
@@ -928,8 +1387,33 @@ function App() {
     next.splice(insertIndex, 0, pendingAiHandPlaceholder.card)
     return next
   }, [aiPlayer.hand, pendingAiHandPlaceholder, pendingAiPlaceholderCardId])
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    if (!useMobileViewLayout || !isHandExpanded) {
+      setExpandedRackTop(null)
+      return
+    }
+
+    const updateExpandedRackTop = (): void => {
+      const top = expandedHandPlaceholderRef.current?.getBoundingClientRect().top
+      if (typeof top !== 'number' || !Number.isFinite(top)) {
+        return
+      }
+      setExpandedRackTop(Math.max(0, Math.round(top)))
+    }
+
+    const rafId = window.requestAnimationFrame(updateExpandedRackTop)
+    window.addEventListener('resize', updateExpandedRackTop)
+    return () => {
+      window.cancelAnimationFrame(rafId)
+      window.removeEventListener('resize', updateExpandedRackTop)
+    }
+  }, [useMobileViewLayout, isHandExpanded, displayedHumanHand.length])
 
   const hoveredFieldTargetIds = useMemo(() => {
+    // PC版：ホバー中のカードにマッチする場札を計算
     if (isAiTurn || playerIntent !== 'play' || !hoveredHandCardId) {
       return new Set<string>()
     }
@@ -943,6 +1427,38 @@ function App() {
     }
     return new Set(matches.map((card) => card.id))
   }, [game.field, hoveredHandCardId, humanPlayer.hand, isAiTurn, playerIntent])
+  const expandedSelectedFieldTargetIds = useMemo(() => {
+    if (
+      !isHandExpanded ||
+      !expandedSelectedCardId ||
+      isAiTurn ||
+      playerIntent !== 'play'
+    ) {
+      return new Set<string>()
+    }
+    const selectedCard = humanPlayer.hand.find((card) => card.id === expandedSelectedCardId)
+    if (!selectedCard) {
+      return new Set<string>()
+    }
+    const matches = getMatchingFieldCards(selectedCard, game.field)
+    return new Set(matches.map((card) => card.id))
+  }, [expandedSelectedCardId, game.field, humanPlayer.hand, isAiTurn, isHandExpanded, playerIntent])
+  const expandedSelectedNoMatchCardId = useMemo(() => {
+    if (
+      !isHandExpanded ||
+      !expandedSelectedCardId ||
+      isAiTurn ||
+      playerIntent !== 'play'
+    ) {
+      return null
+    }
+    const selectedCard = humanPlayer.hand.find((card) => card.id === expandedSelectedCardId)
+    if (!selectedCard) {
+      return null
+    }
+    const matches = getMatchingFieldCards(selectedCard, game.field)
+    return matches.length === 0 ? selectedCard.id : null
+  }, [expandedSelectedCardId, game.field, humanPlayer.hand, isAiTurn, isHandExpanded, playerIntent])
 
   const dropCards = useMemo(
     () => (game.phase === 'koikoiDecision' ? flattenNewYakuCards(game.newYaku) : []),
@@ -1002,11 +1518,12 @@ function App() {
     const actorName = multiplayer.mode === 'cpu'
       ? game.players.find((player) => player.id === latest.player)?.name ?? 'プレイヤー'
       : (latest.player === humanPlayer.id ? 'あなた' : '相手')
+    const shouldShowActorName = multiplayer.mode === 'cpu' || latest.player !== humanPlayer.id
     const label = latest.type === 'koikoi' ? 'こいこい！' : 'あがり！'
     const callout: TurnDecisionCallout = {
       id: turnDecisionCalloutIdRef.current,
       kind: latest.type,
-      text: `${actorName} ${label}`,
+      text: shouldShowActorName ? `${actorName} ${label}` : label,
     }
     turnDecisionCalloutIdRef.current += 1
     setTurnDecisionCallouts((current) => [...current, callout])
@@ -1142,6 +1659,8 @@ function App() {
       fromY: sourceRect.top,
       viaX: matchedRect.left,
       viaY: matchedRect.top,
+      viaWidth: matchedRect.width,
+      viaHeight: matchedRect.height,
       toX: centerLeftA - targetCardWidth / 2,
       toY: zoneBaseY + randomYOffset,
       width: sourceRect.width,
@@ -1166,6 +1685,8 @@ function App() {
       fromY: matchedRect.top,
       viaX: matchedRect.left,
       viaY: matchedRect.top,
+      viaWidth: matchedRect.width,
+      viaHeight: matchedRect.height,
       toX: centerLeftB - targetCardWidth / 2,
       toY: zoneBaseY - randomYOffset,
       width: matchedRect.width,
@@ -1553,7 +2074,143 @@ function App() {
     playerIntent,
   ])
 
+  const closeExpandedHand = useCallback((): void => {
+    clearExpandedSelectionPulseTimer()
+    setExpandedSelectionPulseCardId(null)
+    setIsHandExpanded(false)
+    setExpandedSelectedCardId(null)
+  }, [clearExpandedSelectionPulseTimer])
+  const clearExpandedHandSelection = useCallback((): void => {
+    clearExpandedSelectionPulseTimer()
+    setExpandedSelectionPulseCardId(null)
+    setExpandedSelectedCardId(null)
+  }, [clearExpandedSelectionPulseTimer])
+  const cancelExpandedHandSelection = useCallback((): void => {
+    if (!expandedSelectedCardId) {
+      return
+    }
+    clearExpandedSelectionPulseTimer()
+    const targetCardId = expandedSelectedCardId
+    setExpandedSelectionPulseCardId(targetCardId)
+    expandedSelectionPulseTimerRef.current = window.setTimeout(() => {
+      setExpandedSelectedCardId((current) => (current === targetCardId ? null : current))
+      setExpandedSelectionPulseCardId((current) => (current === targetCardId ? null : current))
+      expandedSelectionPulseTimerRef.current = null
+    }, EXPANDED_SELECTION_CANCEL_PULSE_MS)
+  }, [clearExpandedSelectionPulseTimer, expandedSelectedCardId])
+
+  const tryCommitExpandedSelectedCardToField = useCallback((targetFieldCardId?: string): boolean => {
+    if (
+      !isHandExpanded ||
+      !expandedSelectedCardId ||
+      isAiTurn ||
+      interactionLocked ||
+      playerIntent !== 'play'
+    ) {
+      return false
+    }
+
+    const selectedCard = humanPlayer.hand.find((card) => card.id === expandedSelectedCardId)
+    if (!selectedCard) {
+      setExpandedSelectedCardId(null)
+      return false
+    }
+
+    const matches = getMatchingFieldCards(selectedCard, game.field)
+    if (matches.length > 0) {
+      if (!targetFieldCardId) {
+        return false
+      }
+      const matchedTarget = matches.find((card) => card.id === targetFieldCardId)
+      if (!matchedTarget) {
+        return false
+      }
+      const matchedTargetId = matchedTarget.id
+      pendingExpandedFieldSelectionRef.current = matchedTargetId
+      clearExpandedHandSelection()
+      handlePlayCard(selectedCard)
+      return true
+    }
+
+    if (targetFieldCardId !== FIELD_EMPTY_SLOT_TARGET_ID) {
+      return false
+    }
+    pendingExpandedFieldSelectionRef.current = null
+    clearExpandedHandSelection()
+    handlePlayCard(selectedCard)
+    return true
+  }, [
+    clearExpandedHandSelection,
+    executeTurnCommand,
+    expandedSelectedCardId,
+    game.field,
+    handlePlayCard,
+    humanPlayer.hand,
+    interactionLocked,
+    isAiTurn,
+    isHandExpanded,
+    playerIntent,
+  ])
+  const handleEmptyFieldSlotClick = useCallback((event: MouseEvent<HTMLButtonElement>): void => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!expandedSelectedNoMatchCardId) {
+      return
+    }
+    tryCommitExpandedSelectedCardToField(FIELD_EMPTY_SLOT_TARGET_ID)
+  }, [expandedSelectedNoMatchCardId, tryCommitExpandedSelectedCardToField])
+
+  useEffect(() => {
+    const pendingFieldCardId = pendingExpandedFieldSelectionRef.current
+    if (!pendingFieldCardId) {
+      return
+    }
+    if (game.phase !== 'selectFieldMatch' || game.pendingSource !== 'hand') {
+      return
+    }
+    if (!game.pendingMatches.some((card) => card.id === pendingFieldCardId)) {
+      pendingExpandedFieldSelectionRef.current = null
+      return
+    }
+    pendingExpandedFieldSelectionRef.current = null
+    executeTurnCommand({ type: 'selectHandMatch', fieldCardId: pendingFieldCardId })
+  }, [executeTurnCommand, game.pendingMatches, game.pendingSource, game.phase])
+
+  const handleExpandedHandCardClick = useCallback((card: HanafudaCard): void => {
+    if (!isHandExpanded) {
+      setIsHandExpanded(true)
+      return
+    }
+    if (isAiTurn || interactionLocked || playerIntent !== 'play') {
+      return
+    }
+    if (mustPlayMatchingHandCard && !matchableHandIds.has(card.id)) {
+      return
+    }
+    if (expandedSelectedCardId === card.id) {
+      cancelExpandedHandSelection()
+      return
+    }
+    clearExpandedSelectionPulseTimer()
+    setExpandedSelectionPulseCardId(null)
+    setExpandedSelectedCardId(card.id)
+  }, [
+    cancelExpandedHandSelection,
+    clearExpandedSelectionPulseTimer,
+    expandedSelectedCardId,
+    interactionLocked,
+    isAiTurn,
+    isHandExpanded,
+    matchableHandIds,
+    mustPlayMatchingHandCard,
+    playerIntent,
+  ])
+
   const handleHandPointerDown = useCallback((event: PointerEvent<HTMLButtonElement>, card: HanafudaCard): void => {
+    // 手札拡大モード中はドラッグ処理をスキップ（クリックで選択/プレイする）
+    if (isHandExpanded) {
+      return
+    }
     if (!isMobileLayout || isAiTurn || interactionLocked || playerIntent !== 'play') {
       return
     }
@@ -1572,7 +2229,7 @@ function App() {
       currentY: event.clientY,
       startTime: performance.now(),
     })
-  }, [interactionLocked, isAiTurn, isMobileLayout, matchableHandIds, mustPlayMatchingHandCard, playerIntent])
+  }, [interactionLocked, isAiTurn, isHandExpanded, isMobileLayout, matchableHandIds, mustPlayMatchingHandCard, playerIntent])
 
   const handleHandPointerMove = useCallback((event: PointerEvent<HTMLButtonElement>): void => {
     setHandDrag((current) => {
@@ -1610,12 +2267,17 @@ function App() {
           dy <= FLICK_MIN_UPWARD_DELTA_PX
         const isTap = distance <= TAP_MAX_DISTANCE_PX && elapsed <= TAP_MAX_DURATION_MS
         if (isFlick || isTap) {
-          handlePlayCard(card)
+          // 非拡大状態では拡大のみ（カードは出さない）
+          if (!isHandExpanded) {
+            setIsHandExpanded(true)
+          } else {
+            handlePlayCard(card)
+          }
         }
       }
       return null
     })
-  }, [handlePlayCard, isMobileLayout])
+  }, [handlePlayCard, isHandExpanded, isMobileLayout])
 
   const handleCancelHandSelection = useCallback((): void => {
     if (
@@ -1638,6 +2300,40 @@ function App() {
   }, [executeTurnCommand, game.currentPlayerIndex, game.pendingSource, game.phase, game.players, game.selectedHandCard, interactionLocked, isAiTurn, pendingHandPlaceholder])
 
   const handleBoardClick = useCallback((event: MouseEvent<HTMLElement>): void => {
+    // 拡大中は、手札外クリックで選択解除/縮小（場札選択中は維持）
+    const target = event.target as HTMLElement | null
+    const tappedFieldCardForSelection = Boolean(target?.closest('.field-rack-inner [data-card-id]'))
+    const keepExpandedForFieldSelection =
+      isHandExpanded &&
+      playerIntent === 'select-hand-match' &&
+      tappedFieldCardForSelection
+    if (
+      isHandExpanded &&
+      playerIntent === 'play' &&
+      expandedSelectedFieldTargetIds.size > 0 &&
+      tappedFieldCardForSelection
+    ) {
+      return
+    }
+    if (
+      isHandExpanded &&
+      playerIntent !== 'select-hand-match' &&
+      target &&
+      !target.closest('.player-rack') &&
+      !keepExpandedForFieldSelection
+    ) {
+      if (expandedSelectedCardId) {
+        cancelExpandedHandSelection()
+      } else {
+        closeExpandedHand()
+      }
+    }
+    // 拡大中は、通常時のみここで処理を打ち切る。
+    // select-hand-match中は「閉じる」より「選択キャンセル」を優先する。
+    if (isHandExpanded && playerIntent !== 'select-hand-match') {
+      return
+    }
+
     if (
       isAiTurn ||
       interactionLocked ||
@@ -1646,15 +2342,31 @@ function App() {
     ) {
       return
     }
-    const target = event.target as HTMLElement | null
     if (!target) {
       return
     }
     if (target.closest('.field-rack-inner')) {
+      const tappedFieldCard = target.closest('[data-card-id]')
+      if (!tappedFieldCard) {
+        handleCancelHandSelection()
+      }
       return
     }
     handleCancelHandSelection()
-  }, [game.pendingSource, game.phase, handleCancelHandSelection, interactionLocked, isAiTurn])
+  }, [
+    closeExpandedHand,
+    game.pendingSource,
+    game.phase,
+    handleCancelHandSelection,
+    interactionLocked,
+    isAiTurn,
+    isHandExpanded,
+    expandedSelectedCardId,
+    cancelExpandedHandSelection,
+    expandedSelectedFieldTargetIds,
+    playerIntent,
+    tryCommitExpandedSelectedCardToField,
+  ])
 
   const handleAppPointerDown = useCallback((event: PointerEvent<HTMLElement>): void => {
     const target = event.target as HTMLElement | null
@@ -1672,8 +2384,19 @@ function App() {
       return
     }
 
+    if (playerIntent === 'play' && isHandExpanded && expandedSelectedCardId) {
+      if (tryCommitExpandedSelectedCardToField(card.id)) {
+        return
+      }
+      return
+    }
+
     if (playerIntent === 'select-hand-match') {
-      executeTurnCommand({ type: 'selectHandMatch', fieldCardId: card.id })
+      if (highlightFieldIds.has(card.id)) {
+        executeTurnCommand({ type: 'selectHandMatch', fieldCardId: card.id })
+      } else {
+        handleCancelHandSelection()
+      }
       return
     }
 
@@ -1686,7 +2409,6 @@ function App() {
     setPendingHandPlaceholder(null)
     setPendingAiHandPlaceholder(null)
     setHandDrag(null)
-    setMobileYakuDetailTarget(null)
     setMoveEffects([])
     setTurnDecisionCallouts([])
     setAnimatedAddToFieldHistoryLength(0)
@@ -1803,12 +2525,7 @@ function App() {
     })
   }, [canSelectRoundCount, game.config, multiplayer, resetTransientUiState, restartWithConfig])
 
-  const mobileDetailEntries = mobileYakuDetailTarget === 'opponent'
-    ? aiVisibleProgressEntries
-    : humanVisibleProgressEntries
-  const mobileDetailTitle = mobileYakuDetailTarget === 'opponent'
-    ? opponentDisplayName
-    : humanDisplayName
+
   const fieldRow = (
     <div className="field-row">
       <DeckZone
@@ -1839,10 +2556,20 @@ function App() {
               )
             }
             const selectingField = !isAiTurn && !interactionLocked && (playerIntent === 'select-hand-match' || playerIntent === 'select-draw-match')
-            const selectable = selectingField && highlightFieldIds.has(card.id)
+            const selectingExpandedFieldTarget =
+              !isAiTurn &&
+              !interactionLocked &&
+              playerIntent === 'play' &&
+              isHandExpanded &&
+              expandedSelectedFieldTargetIds.size > 0
+            const selectable = (selectingField && highlightFieldIds.has(card.id)) || (selectingExpandedFieldTarget && expandedSelectedFieldTargetIds.has(card.id))
+            const clickable =
+              (selectingField && (playerIntent === 'select-hand-match' || selectable)) ||
+              (selectingExpandedFieldTarget && expandedSelectedFieldTargetIds.has(card.id))
+            // PC版：ホバー中の手札にマッチする場札をハイライト
             const hoveringHand = !isAiTurn && !interactionLocked && playerIntent === 'play' && hoveredFieldTargetIds.size > 0
             const hoverHighlighted = hoveringHand && hoveredFieldTargetIds.has(card.id)
-            const dimmed = selectingField && !selectable
+            const dimmed = (selectingField || selectingExpandedFieldTarget) && !selectable
             const highlighted = selectable || hoverHighlighted
 
             return (
@@ -1850,6 +2577,7 @@ function App() {
                 key={card.id}
                 card={card}
                 selectable={selectable}
+                clickable={clickable}
                 highlighted={highlighted}
                 dimmed={dimmed}
                 tilt={stableTilt(card.id)}
@@ -1857,15 +2585,48 @@ function App() {
               />
             )
           })}
+          {expandedSelectedNoMatchCardId ? (
+            <button
+              type="button"
+              className="field-empty-slot-target"
+              aria-label="この場所に場へ出す"
+              onClick={handleEmptyFieldSlotClick}
+            />
+          ) : null}
         </div>
       </div>
     </div>
   )
 
   return (
-    <main className={`app ${isChromeCollapsed ? 'chrome-collapsed' : ''}`} onPointerDown={handleAppPointerDown}>
+    <main ref={appContainerRef} className={`app ${isChromeCollapsed ? 'chrome-collapsed' : ''}`} onPointerDown={handleAppPointerDown}>
       <section className="app-chrome">
         <div className="chrome-toggle-row">
+          {isMobileLayout && !isLandscapeFullscreen ? (
+            <button
+              type="button"
+              className="fullscreen-button compact"
+              onClick={enterLandscapeFullscreen}
+            >
+              フルスクリーン
+            </button>
+          ) : null}
+          {isLandscapeFullscreen ? (
+            <button
+              type="button"
+              className="fullscreen-button active"
+              onClick={exitLandscapeFullscreen}
+            >
+              通常表示に戻す
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="chrome-toggle-button"
+            onClick={() => setIsScoreTableVisible((current) => !current)}
+          >
+            {isScoreTableVisible ? '点数表を閉じる' : '点数表'}
+          </button>
           <button
             type="button"
             className="chrome-toggle-button"
@@ -1927,26 +2688,26 @@ function App() {
       </section>
 
       {isMatchSurfaceVisible ? (
-        <section className={`table-layout ${isMobileLayout ? 'mobile' : ''}`}>
-          {!isMobileLayout ? (
+        <section className={`table-layout ${useMobileViewLayout ? 'mobile' : ''}`}>
+          {!useMobileViewLayout ? (
             <RoleYakuPanel
               captureZoneId={aiPlayer.id}
               title={opponentDisplayName}
               score={aiPanelView.score}
               captured={aiPanelView.captured}
               yaku={aiPanelView.completedYaku}
+              blockedCardIds={aiBlockedCardIds}
               active={game.currentPlayerIndex === opponentPlayerIndex}
               side="left"
             />
           ) : null}
 
-          <section className={`board-center ${isMobileLayout ? 'mobile' : ''}`} aria-label="対局ボード" onClick={handleBoardClick}>
-            <h2>{opponentDisplayName}の手札</h2>
-            <div className={`card-rack opponent-rack ${isMobileLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === opponentPlayerIndex ? 'active-turn' : ''}`}>
+          <section className={`board-center ${useMobileViewLayout ? 'mobile' : ''}`} aria-label="対局ボード" onClick={handleBoardClick}>
+            <div className={`card-rack opponent-rack ${useMobileViewLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === opponentPlayerIndex ? 'active-turn' : ''}`}>
               {displayedAiHand.map((card) => {
                 const isPlaceholder = pendingAiPlaceholderCardId === card.id
                 const hasActiveMove = activeMoveCardIdSet.has(card.id)
-                const baseTilt = isMobileLayout ? 0 : stableTilt(card.id)
+                const baseTilt = useMobileViewLayout ? 0 : stableTilt(card.id)
                 if (isPlaceholder) {
                   if (!hasActiveMove) {
                     return (
@@ -1983,24 +2744,127 @@ function App() {
             </div>
 
             {/* 相手の役（モバイルのみ・相手の手札の下） */}
-            {isMobileLayout ? (
+            {useMobileViewLayout ? (
               <MobileYakuRow
+                captured={aiPanelView.captured}
                 visibleProgressEntries={aiVisibleProgressEntries}
                 title={opponentDisplayName}
+                score={aiPanelView.score}
                 active={game.currentPlayerIndex === opponentPlayerIndex}
                 captureZoneId={aiPlayer.id}
-                onOpenDetail={() => setMobileYakuDetailTarget('opponent')}
               />
             ) : null}
 
             {/* 場（中央） */}
             {fieldRow}
 
-            <h2>{humanDisplayName}の手札</h2>
-            <div className={`card-rack player-rack ${isMobileLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === localPlayerIndex ? 'active-turn' : ''}`}>
+            {/* 手札拡大時の背景オーバーレイ（選択中は選択解除、未選択時は閉じる） */}
+            {useMobileViewLayout && isHandExpanded && (
+              <div
+                className="hand-expanded-backdrop"
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (playerIntent === 'select-hand-match') {
+                    handleCancelHandSelection()
+                    return
+                  }
+                  if (!tryCommitExpandedSelectedCardToField()) {
+                    if (expandedSelectedCardId) {
+                      cancelExpandedHandSelection()
+                    } else {
+                      closeExpandedHand()
+                    }
+                  }
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (playerIntent === 'select-hand-match') {
+                    handleCancelHandSelection()
+                    return
+                  }
+                  if (!tryCommitExpandedSelectedCardToField()) {
+                    if (expandedSelectedCardId) {
+                      cancelExpandedHandSelection()
+                    } else {
+                      closeExpandedHand()
+                    }
+                  }
+                }}
+              />
+            )}
+
+            {/* 手札拡大時のレイアウト維持用プレースホルダー */}
+            {useMobileViewLayout && isHandExpanded && (
+              <div
+                ref={expandedHandPlaceholderRef}
+                className="card-rack player-rack hand-flat player-rack-placeholder"
+                onTouchEnd={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (playerIntent === 'select-hand-match') {
+                    handleCancelHandSelection()
+                    return
+                  }
+                  if (expandedSelectedCardId) {
+                    cancelExpandedHandSelection()
+                  } else {
+                    closeExpandedHand()
+                  }
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (playerIntent === 'select-hand-match') {
+                    handleCancelHandSelection()
+                    return
+                  }
+                  if (expandedSelectedCardId) {
+                    cancelExpandedHandSelection()
+                  } else {
+                    closeExpandedHand()
+                  }
+                }}
+              >
+                {displayedHumanHand.map((card) => (
+                  <div key={`placeholder-${card.id}`} className="card-tile card-slot-placeholder" />
+                ))}
+              </div>
+            )}
+
+            <div
+              className={`card-rack player-rack ${useMobileViewLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === localPlayerIndex ? 'active-turn' : ''} ${isHandExpanded ? 'expanded' : ''} ${isHandExpanded && expandedRackTop !== null ? 'expanded-top-aligned' : ''}`}
+              style={
+                isHandExpanded && expandedRackTop !== null
+                  ? ({ '--expanded-rack-top': `${expandedRackTop}px` } as CSSProperties)
+                  : undefined
+              }
+              onClick={useMobileViewLayout ? (event) => {
+                const target = event.target as HTMLElement | null
+                const tappedCard = Boolean(target?.closest('[data-card-id]'))
+
+                if (isHandExpanded) {
+                  if (!tappedCard) {
+                    event.stopPropagation()
+                    if (playerIntent === 'select-hand-match') {
+                      handleCancelHandSelection()
+                    } else {
+                      if (expandedSelectedCardId) {
+                        cancelExpandedHandSelection()
+                      } else {
+                        closeExpandedHand()
+                      }
+                    }
+                  }
+                  return
+                }
+
+                if (isAiTurn || interactionLocked) return
+                setIsHandExpanded(true)
+              } : undefined}
+            >
               {displayedHumanHand.map((card) => {
                 const isPlaceholder = pendingPlaceholderCardId === card.id
-                const baseTilt = isMobileLayout ? 0 : stableTilt(card.id)
+                const baseTilt = useMobileViewLayout ? 0 : stableTilt(card.id)
                 const dragging = handDrag?.cardId === card.id
                 const dragX = dragging ? handDrag.currentX - handDrag.startX : 0
                 const dragY = dragging ? handDrag.currentY - handDrag.startY : 0
@@ -2014,9 +2878,12 @@ function App() {
                       <CardTile
                         key={`${card.id}-selected`}
                         card={card}
+                        selectable
+                        clickable
                         highlighted
                         tilt={baseTilt}
                         layout
+                        onClick={handleCancelHandSelection}
                       />
                     )
                   }
@@ -2042,62 +2909,70 @@ function App() {
                     selectable={selectable}
                     highlighted={highlighted}
                     dimmed={dimmed}
+                    raised={isHandExpanded && expandedSelectedCardId === card.id}
+                    tapPulse={isHandExpanded && expandedSelectionPulseCardId === card.id}
                     tilt={baseTilt}
                     dragX={dragX}
                     dragY={dragY}
                     dragging={dragging}
                     layout
                     onMouseEnter={
-                      isMobileLayout
+                      useMobileViewLayout
                         ? undefined
                         : () => setHoveredHandCardId(card.id)
                     }
                     onMouseLeave={
-                      isMobileLayout
+                      useMobileViewLayout
                         ? undefined
                         : () => setHoveredHandCardId((current) => (current === card.id ? null : current))
                     }
                     onPointerDown={
-                      isMobileLayout
+                      useMobileViewLayout
                         ? (event) => handleHandPointerDown(event, card)
                         : undefined
                     }
-                    onPointerMove={isMobileLayout ? handleHandPointerMove : undefined}
+                    onPointerMove={useMobileViewLayout ? handleHandPointerMove : undefined}
                     onPointerUp={
-                      isMobileLayout
+                      useMobileViewLayout
                         ? (event) => finishHandPointerGesture(event, card, false)
                         : undefined
                     }
                     onPointerCancel={
-                      isMobileLayout
+                      useMobileViewLayout
                         ? (event) => finishHandPointerGesture(event, card, true)
                         : undefined
                     }
-                    onClick={isMobileLayout ? undefined : () => handlePlayCard(card)}
+                    onClick={
+                      useMobileViewLayout
+                        ? () => handleExpandedHandCardClick(card)
+                        : () => handlePlayCard(card)
+                    }
                   />
                 )
               })}
             </div>
 
             {/* 自分の役（モバイルのみ・手札の下） */}
-            {isMobileLayout ? (
+            {useMobileViewLayout ? (
               <MobileYakuRow
+                captured={humanPanelView.captured}
                 visibleProgressEntries={humanVisibleProgressEntries}
                 title={humanDisplayName}
+                score={humanPanelView.score}
                 active={game.currentPlayerIndex === localPlayerIndex}
                 captureZoneId={humanPlayer.id}
-                onOpenDetail={() => setMobileYakuDetailTarget('self')}
               />
             ) : null}
           </section>
 
-          {!isMobileLayout ? (
+          {!useMobileViewLayout ? (
             <RoleYakuPanel
               captureZoneId={humanPlayer.id}
               title={humanDisplayName}
               score={humanPanelView.score}
               captured={humanPanelView.captured}
               yaku={humanPanelView.completedYaku}
+              blockedCardIds={humanBlockedCardIds}
               active={game.currentPlayerIndex === localPlayerIndex}
               side="right"
             />
@@ -2108,6 +2983,26 @@ function App() {
           <p>CPU対戦を開始するか、通信接続が確立すると対戦盤面が表示されます。</p>
         </section>
       )}
+
+      {isScoreTableVisible ? (
+        <section className="score-table-panel" aria-label="点数表パネル">
+          <div className="score-table-panel-head">
+            <h2>点数表</h2>
+            <button type="button" className="score-table-close-button" onClick={() => setIsScoreTableVisible(false)}>
+              閉じる
+            </button>
+          </div>
+          <ScoreTable
+            roundScoreHistory={game.roundScoreHistory}
+            player1Name={humanDisplayName}
+            player2Name={opponentDisplayName}
+            player1TotalScore={humanPlayer.score}
+            player2TotalScore={aiPlayer.score}
+            currentRound={game.round}
+            maxRounds={game.config.maxRounds}
+          />
+        </section>
+      ) : null}
 
       <YakuDropEffect cards={dropCards} />
       <AnimatePresence>
@@ -2132,49 +3027,6 @@ function App() {
           </motion.div>
         ) : null}
       </AnimatePresence>
-      {isMatchSurfaceVisible && isMobileLayout && mobileYakuDetailTarget ? (
-        <div className="mobile-yaku-sheet-overlay" onClick={() => setMobileYakuDetailTarget(null)}>
-          <section
-            className="mobile-yaku-sheet"
-            role="dialog"
-            aria-label={`${mobileDetailTitle}の役詳細`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header className="mobile-yaku-sheet-header">
-              <div>
-                <p>{mobileDetailTitle}</p>
-                <strong>役の進捗</strong>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMobileYakuDetailTarget(null)}
-                aria-label="役詳細を閉じる"
-              >
-                閉じる
-              </button>
-            </header>
-            <div className="mobile-yaku-sheet-content">
-              {mobileDetailEntries.length > 0 ? (
-                <section className="progress-matrix">
-                  {mobileDetailEntries.map((entry) => (
-                    <YakuProgressEntry
-                      key={entry.key}
-                      label={entry.label}
-                      current={entry.current}
-                      target={entry.target}
-                      cards={entry.cards}
-                      done={entry.done}
-                      subEntries={entry.subEntries}
-                    />
-                  ))}
-                </section>
-              ) : (
-                <p className="empty-note">成立に近い役はまだありません。</p>
-              )}
-            </div>
-          </section>
-        </div>
-      ) : null}
       <TurnDecisionEffect
         callouts={turnDecisionCallouts}
         onFinish={(id) => {
@@ -2257,7 +3109,7 @@ function App() {
         <RoundOverlay
           title="役がそろいました"
           message={`現在 ${getYakuTotalPoints(activePlayer.completedYaku)}文。新規役:`}
-          messageLines={game.newYaku.map((item) => `${item.name} (${item.points}文)`)}
+          messageLines={koikoiDecisionYakuLines}
           primaryActionLabel="ここで上がる"
           onPrimaryAction={() => executeTurnCommand({ type: 'resolveKoiKoi', decision: 'stop' })}
           secondaryActionLabel="こいこいする"
@@ -2273,6 +3125,7 @@ function App() {
               ? `${game.roundWinner === humanPlayer.id ? 'あなた' : '相手'}の勝利。${game.roundPoints}文を獲得しました。`
               : 'この月は引き分けです。'
           }
+          messageLines={roundPointBreakdownLines}
           primaryActionLabel="次の月へ"
           onPrimaryAction={() => {
             setPendingHandPlaceholder(null)
@@ -2290,6 +3143,7 @@ function App() {
               ? `${game.winner === humanPlayer.id ? 'あなた' : '相手'}の勝利です。`
               : '最終結果は引き分けです。'
           }
+          messageLines={roundPointBreakdownLines}
           primaryActionLabel="もう一度遊ぶ"
           onPrimaryAction={handleRestart}
         />
