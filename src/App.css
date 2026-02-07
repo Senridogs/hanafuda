@@ -318,6 +318,13 @@
   margin-left: 0;
 }
 
+.card-rack.hand-flat {
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: clamp(3px, 1cqw, 6px);
+  overflow: visible;
+}
+
 .opponent-rack,
 .player-rack {
   background: rgb(6 10 15 / 36%);
@@ -446,6 +453,63 @@ button.mobile-yaku-strip.active {
 
 .mobile-yaku-chip.empty {
   opacity: 0.8;
+}
+
+.mobile-yaku-grid-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.mobile-yaku-grid-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.mobile-yaku-grid-header.active {
+  color: #ffe8c0;
+}
+
+.mobile-yaku-grid-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #f3dfbe;
+  letter-spacing: 0.04em;
+}
+
+.mobile-yaku-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+}
+
+.mobile-yaku-grid-cell {
+  font-size: 0.6rem;
+  line-height: 1.3;
+  padding: 3px 4px;
+  border-radius: 5px;
+  color: #8a9aaa;
+  border: 1px solid rgb(100 130 140 / 22%);
+  background: rgb(20 32 40 / 36%);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-yaku-grid-cell.has-progress {
+  color: #d6e2e5;
+  border-color: rgb(124 171 164 / 36%);
+  background: rgb(28 66 66 / 34%);
+}
+
+.mobile-yaku-grid-cell.done {
+  color: #ffe2ad;
+  border-color: rgb(255 194 111 / 64%);
+  background: rgb(127 73 24 / 30%);
 }
 
 .deck-zone {
@@ -1288,32 +1352,14 @@ button:hover {
     padding: var(--board-rack-padding);
   }
 
-  .card-rack.hand-fan {
-    min-height: calc((var(--board-card-width) * 1.7) + 10px);
-    padding-inline: 2px;
+  .card-rack.hand-flat {
+    min-height: calc((var(--board-card-width) * 1.64) + (var(--board-rack-padding) * 2));
+    padding-inline: 4px;
+    gap: clamp(2px, 0.8cqw, 5px);
   }
 
-  .card-rack.hand-fan .fan-card {
-    margin-left: calc(var(--board-card-width) * -0.46);
-  }
-
-  .mobile-center-row {
-    grid-template-columns: minmax(58px, 68px) minmax(0, 1fr) minmax(58px, 68px);
-    gap: 5px;
-  }
-
-  button.mobile-yaku-strip {
-    padding: 7px 5px;
-    gap: 5px;
-    border-radius: 10px;
-  }
-
-  .mobile-yaku-strip-title {
-    font-size: 0.66rem;
-  }
-
-  .mobile-yaku-chip {
-    font-size: 0.58rem;
+  .mobile-yaku-grid-cell {
+    font-size: 0.56rem;
     padding: 2px 3px;
   }
 
