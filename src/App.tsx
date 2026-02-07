@@ -44,6 +44,7 @@ import {
   stableTilt,
   type TurnIntent,
   type VisibleYakuProgressState,
+  type YakuProgressState,
 } from './ui/gameUi'
 import { useMultiplayerGame } from './hooks/useMultiplayerGame'
 import type { TurnCommand } from './net/protocol'
@@ -349,6 +350,31 @@ function MobileYakuStrip(props: {
         )}
       </span>
     </button>
+  )
+}
+
+function MobileYakuGrid(props: {
+  allProgressEntries: readonly YakuProgressState[]
+  opponentTitle: string
+  humanTitle: string
+  opponentActive: boolean
+  humanActive: boolean
+}) {
+  const { allProgressEntries, opponentTitle, humanTitle, opponentActive, humanActive } = props
+
+  return (
+    <div className="mobile-yaku-grid-section">
+      <div className={`mobile-yaku-grid-header ${humanActive ? 'active' : ''}`}>
+        <span className="mobile-yaku-grid-title">{humanTitle} - 役</span>
+      </div>
+      <div className="mobile-yaku-grid">
+        {allProgressEntries.map((entry) => (
+          <span key={entry.key} className={`mobile-yaku-grid-cell ${entry.done ? 'done' : ''} ${entry.current > 0 ? 'has-progress' : ''}`}>
+            {entry.label} {Math.min(entry.current, entry.target)}/{entry.target}
+          </span>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -765,6 +791,10 @@ function App() {
   )
   const humanVisibleProgressEntries = useMemo(
     () => buildVisibleYakuProgressEntries(buildYakuProgressEntries(humanPanelView.captured, humanPanelView.completedYaku)),
+    [humanPanelView.captured, humanPanelView.completedYaku],
+  )
+  const humanAllProgressEntries = useMemo(
+    () => buildYakuProgressEntries(humanPanelView.captured, humanPanelView.completedYaku),
     [humanPanelView.captured, humanPanelView.completedYaku],
   )
   const isLocalTurn = game.currentPlayerIndex === localPlayerIndex
@@ -1940,12 +1970,11 @@ function App() {
 
           <section className={`board-center ${isMobileLayout ? 'mobile' : ''}`} aria-label="対局ボード" onClick={handleBoardClick}>
             <h2>{opponentDisplayName}の手札</h2>
-            <div className={`card-rack opponent-rack ${isMobileLayout ? 'hand-fan opponent' : ''}`}>
+            <div className={`card-rack opponent-rack ${isMobileLayout ? 'hand-flat' : ''}`}>
               {displayedAiHand.map((card, index) => {
                 const isPlaceholder = pendingAiPlaceholderCardId === card.id
                 const hasActiveMove = activeMoveCardIdSet.has(card.id)
-                const baseTilt = stableTilt(card.id)
-                const fanPose = isMobileLayout ? getMobileFanPose(index, displayedAiHand.length, baseTilt) : { tilt: baseTilt, lift: 0 }
+                const baseTilt = isMobileLayout ? 0 : stableTilt(card.id)
                 if (isPlaceholder) {
                   if (!hasActiveMove) {
                     return (
@@ -1953,9 +1982,7 @@ function App() {
                         key={`${card.id}-ai-pending`}
                         card={card}
                         hidden
-                        tilt={fanPose.tilt}
-                        dragY={fanPose.lift}
-                        className={isMobileLayout ? 'fan-card' : undefined}
+                        tilt={baseTilt}
                         layout
                       />
                     )
@@ -1963,8 +1990,8 @@ function App() {
                   return (
                     <motion.div
                       key={`${card.id}-ai-placeholder`}
-                      className={`card-tile card-slot-placeholder hand-slot-placeholder ${isMobileLayout ? 'fan-card' : ''}`}
-                      style={{ rotate: fanPose.tilt, y: fanPose.lift }}
+                      className="card-tile card-slot-placeholder hand-slot-placeholder"
+                      style={{ rotate: baseTilt }}
                       layout="position"
                       transition={HAND_LAYOUT_TRANSITION}
                       aria-hidden="true"
@@ -1976,9 +2003,7 @@ function App() {
                     key={card.id}
                     card={card}
                     hidden
-                    tilt={fanPose.tilt}
-                    dragY={fanPose.lift}
-                    className={isMobileLayout ? 'fan-card' : undefined}
+                    tilt={baseTilt}
                     layout
                   />
                 )
@@ -1987,6 +2012,13 @@ function App() {
 
             {isMobileLayout ? (
               <>
+                {fieldRow}
+                <MobileYakuGrid
+                  allProgressEntries={humanAllProgressEntries}
+                  opponentTitle={opponentDisplayName}
+                  humanTitle={humanDisplayName}
+                  opponentActive={game.currentPlayerIndex === opponentPlayerIndex}
+                  humanActive={game.currentPlayerIndex === localPlayerIndex}
                 <MobileYakuStrip
                   title={opponentDisplayName}
                   entries={aiVisibleProgressEntries}
@@ -2008,14 +2040,13 @@ function App() {
             ) : fieldRow}
 
             <h2>{humanDisplayName}の手札</h2>
-            <div className={`card-rack player-rack ${isMobileLayout ? 'hand-fan player' : ''}`}>
+            <div className={`card-rack player-rack ${isMobileLayout ? 'hand-flat' : ''}`}>
               {displayedHumanHand.map((card, index) => {
                 const isPlaceholder = pendingPlaceholderCardId === card.id
-                const baseTilt = stableTilt(card.id)
-                const fanPose = isMobileLayout ? getMobileFanPose(index, displayedHumanHand.length, baseTilt) : { tilt: baseTilt, lift: 0 }
+                const baseTilt = isMobileLayout ? 0 : stableTilt(card.id)
                 const dragging = handDrag?.cardId === card.id
                 const dragX = dragging ? handDrag.currentX - handDrag.startX : 0
-                const dragY = fanPose.lift + (dragging ? handDrag.currentY - handDrag.startY : 0)
+                const dragY = dragging ? handDrag.currentY - handDrag.startY : 0
                 if (isPlaceholder) {
                   if (
                     game.phase === 'selectFieldMatch' &&
@@ -2027,9 +2058,7 @@ function App() {
                         key={`${card.id}-selected`}
                         card={card}
                         highlighted
-                        tilt={fanPose.tilt}
-                        dragY={fanPose.lift}
-                        className={isMobileLayout ? 'fan-card' : undefined}
+                        tilt={baseTilt}
                         layout
                       />
                     )
@@ -2037,8 +2066,8 @@ function App() {
                   return (
                     <motion.div
                       key={`${card.id}-placeholder`}
-                      className={`card-tile card-slot-placeholder hand-slot-placeholder ${isMobileLayout ? 'fan-card' : ''}`}
-                      style={{ rotate: fanPose.tilt, y: fanPose.lift }}
+                      className="card-tile card-slot-placeholder hand-slot-placeholder"
+                      style={{ rotate: baseTilt }}
                       layout="position"
                       transition={HAND_LAYOUT_TRANSITION}
                       aria-hidden="true"
@@ -2056,11 +2085,10 @@ function App() {
                     selectable={selectable}
                     highlighted={highlighted}
                     dimmed={dimmed}
-                    tilt={fanPose.tilt}
+                    tilt={baseTilt}
                     dragX={dragX}
                     dragY={dragY}
                     dragging={dragging}
-                    className={isMobileLayout ? 'fan-card' : undefined}
                     layout
                     onMouseEnter={
                       isMobileLayout
