@@ -190,7 +190,7 @@
 }
 
 .lobby-input:focus {
-  outline: 2px solid rgb(245 186 94 / 40%);
+  outline: 2px solid rgb(255 127 39 / 40%);
   outline-offset: 1px;
 }
 
@@ -647,9 +647,14 @@ button.mobile-yaku-strip.active {
   padding: 0 2px;
 }
 
+.mobile-yaku-header > span:first-child {
+  display: none;
+}
+
 .mobile-mini-score {
-  font-size: var(--mobile-yaku-font-mini);
-  color: #5a5a5a;
+  font-size: var(--mobile-yaku-font-header);
+  font-weight: 700;
+  color: #3a3a3a;
   letter-spacing: 0.04em;
 }
 
@@ -1256,7 +1261,7 @@ button.mobile-yaku-strip.active {
 .card-tile.dragging {
   filter: brightness(1.08);
   box-shadow:
-    0 0 0 1px rgb(245 186 94 / 52%),
+    0 0 0 1px rgb(255 127 39 / 52%),
     0 18px 30px rgb(0 0 0 / 45%);
 }
 
@@ -1287,9 +1292,10 @@ button.mobile-yaku-strip.active {
 .card-tile.highlighted {
   animation: playable-pulse 1.25s ease-in-out infinite;
   box-shadow:
-    0 0 0 1px rgb(245 186 94 / 70%),
+    0 0 0 2px rgb(255 127 39 / 100%),
     0 14px 24px rgb(0 0 0 / 44%),
-    0 0 22px rgb(245 186 94 / 50%);
+    0 0 40px rgb(255 127 39 / 50%),
+    0 0 60px rgb(255 127 39 / 30%);
 }
 
 /* 場札のハイライト時は背景オーバーレイより上に表示（タップ可能にする） */
@@ -1302,7 +1308,7 @@ button.mobile-yaku-strip.active {
   width: var(--board-card-width);
   aspect-ratio: 512 / 839;
   border-radius: 8px;
-  border: 2px solid rgb(247 192 102 / 86%);
+  border: 3px solid rgb(255 127 39 / 100%);
   background: rgb(255 188 98 / 12%);
   padding: 0;
   margin: 0;
@@ -1373,7 +1379,7 @@ button.mobile-yaku-strip.active {
   50% {
     box-shadow:
       0 0 0 1px rgb(255 230 188 / 52%),
-      0 0 28px rgb(245 186 94 / 62%);
+      0 0 28px rgb(255 127 39 / 62%);
     filter: brightness(1.08);
   }
 }

@@ -1518,12 +1518,11 @@ function App() {
     const actorName = multiplayer.mode === 'cpu'
       ? game.players.find((player) => player.id === latest.player)?.name ?? 'プレイヤー'
       : (latest.player === humanPlayer.id ? 'あなた' : '相手')
-    const shouldShowActorName = multiplayer.mode === 'cpu' || latest.player !== humanPlayer.id
     const label = latest.type === 'koikoi' ? 'こいこい！' : 'あがり！'
     const callout: TurnDecisionCallout = {
       id: turnDecisionCalloutIdRef.current,
       kind: latest.type,
-      text: shouldShowActorName ? `${actorName} ${label}` : label,
+      text: label,
     }
     turnDecisionCalloutIdRef.current += 1
     setTurnDecisionCallouts((current) => [...current, callout])
