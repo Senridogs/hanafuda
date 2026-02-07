@@ -171,6 +171,51 @@
   background: linear-gradient(180deg, rgb(7 14 18 / 62%), rgb(17 23 32 / 66%));
 }
 
+.difficulty-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgb(249 221 170 / 24%);
+  background: linear-gradient(180deg, rgb(7 14 18 / 62%), rgb(17 23 32 / 66%));
+}
+
+.difficulty-selector h3 {
+  margin: 0 0 4px 0;
+  font-size: 0.9rem;
+  color: #f7dcba;
+}
+
+.difficulty-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.difficulty-button {
+  padding: 6px 12px;
+  border: 1px solid rgb(249 221 170 / 30%);
+  border-radius: 8px;
+  background: rgb(0 0 0 / 26%);
+  color: #f7f0e2;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.difficulty-button:hover {
+  border-color: rgb(255 127 39 / 50%);
+  background: rgb(0 0 0 / 40%);
+}
+
+.difficulty-button.active {
+  border-color: rgb(255 127 39 / 100%);
+  background: rgb(255 127 39 / 20%);
+  color: #ffe2ad;
+  font-weight: 600;
+}
+
 .lobby-row {
   display: flex;
   flex-wrap: wrap;

@@ -1980,7 +1980,7 @@ function App() {
       if (current.phase !== 'selectFieldMatch' || current.currentPlayerIndex !== opponentPlayerIndex) {
         return
       }
-      const match = chooseAiMatch(current.pendingMatches)
+      const match = chooseAiMatch(current.pendingMatches, current.config.aiDifficulty)
       if (match) {
         executeTurnCommand({ type: 'selectHandMatch', fieldCardId: match.id })
       }
@@ -2011,7 +2011,7 @@ function App() {
       if (current.phase !== 'selectDrawMatch' || current.currentPlayerIndex !== opponentPlayerIndex) {
         return
       }
-      const match = chooseAiMatch(current.pendingMatches)
+      const match = chooseAiMatch(current.pendingMatches, current.config.aiDifficulty)
       if (match) {
         executeTurnCommand({ type: 'selectDrawMatch', fieldCardId: match.id })
       }
@@ -2429,6 +2429,16 @@ function App() {
     }))
   }, [game.config, multiplayer, resetTransientUiState])
 
+  const handleChangeAiDifficulty = useCallback((difficulty: 'yowai' | 'futsuu' | 'tsuyoi' | 'yabai' | 'oni' | 'kami'): void => {
+    if (multiplayer.mode !== 'cpu') {
+      return
+    }
+    setGame(createNewGame({
+      ...game.config,
+      aiDifficulty: difficulty,
+    }))
+  }, [game.config, multiplayer.mode])
+
   const handleStartHost = useCallback((): void => {
     setIsMatchSurfaceVisible(false)
     setIsChromeCollapsed(false)  // 部屋作成時はヘッダーを隠さない
@@ -2679,6 +2689,34 @@ function App() {
               onReconnect={() => multiplayer.reconnect(gameRef.current)}
               onLeave={handleLeaveMultiplayer}
             />
+
+            {multiplayer.mode === 'cpu' ? (
+              <section className="difficulty-selector">
+                <h3>難易度</h3>
+                <div className="difficulty-buttons">
+                  {(['yowai', 'futsuu', 'tsuyoi', 'yabai', 'oni', 'kami'] as const).map((difficulty) => {
+                    const labels: Record<typeof difficulty, string> = {
+                      yowai: 'よわい',
+                      futsuu: 'ふつう',
+                      tsuyoi: 'つよい',
+                      yabai: 'やばい',
+                      oni: 'おに',
+                      kami: 'かみ',
+                    }
+                    return (
+                      <button
+                        key={difficulty}
+                        type="button"
+                        className={`difficulty-button ${game.config.aiDifficulty === difficulty ? 'active' : ''}`}
+                        onClick={() => handleChangeAiDifficulty(difficulty)}
+                      >
+                        {labels[difficulty]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            ) : null}
           </>
         ) : null}
       </section>
