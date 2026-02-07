@@ -44,7 +44,6 @@ import {
   stableTilt,
   type TurnIntent,
   type VisibleYakuProgressState,
-  type YakuProgressState,
 } from './ui/gameUi'
 import { useMultiplayerGame } from './hooks/useMultiplayerGame'
 import type { TurnCommand } from './net/protocol'
@@ -104,17 +103,7 @@ const FLICK_MIN_SPEED_PX_PER_MS = 0.28
 const FLICK_MIN_UPWARD_DELTA_PX = -10
 const TAP_MAX_DISTANCE_PX = 10
 const TAP_MAX_DURATION_MS = 300
-const MOBILE_FAN_TILT_STEP_DEG = 3.4
-const MOBILE_FAN_CURVE_PX = 2.8
 
-function getMobileFanPose(index: number, total: number, baseTilt: number): { tilt: number; lift: number } {
-  const center = (total - 1) / 2
-  const offset = index - center
-  return {
-    tilt: baseTilt + (offset * MOBILE_FAN_TILT_STEP_DEG),
-    lift: Math.abs(offset) * MOBILE_FAN_CURVE_PX,
-  }
-}
 
 function CardTile(props: {
   card: HanafudaCard
@@ -318,40 +307,6 @@ function RoleYakuPanel(props: {
   )
 }
 
-function MobileYakuStrip(props: {
-  title: string
-  entries: readonly VisibleYakuProgressState[]
-  active: boolean
-  onOpenDetail: () => void
-  layout?: 'side' | 'stack'
-  captureZoneId: 'player1' | 'player2'
-}) {
-  const { title, entries, active, onOpenDetail, layout = 'side', captureZoneId } = props
-
-  return (
-    <button
-      type="button"
-      className={`mobile-yaku-strip ${layout} ${active ? 'active' : ''}`}
-      onClick={onOpenDetail}
-      aria-label={`${title}の役詳細を開く`}
-      data-capture-zone={captureZoneId}
-    >
-      <span className="mobile-yaku-strip-title">{title}</span>
-      <span className="mobile-yaku-strip-note">役</span>
-      <span className="mobile-yaku-strip-list">
-        {entries.length > 0 ? (
-          entries.map((entry) => (
-            <span key={entry.key} className={`mobile-yaku-chip ${entry.done ? 'done' : ''}`}>
-              {entry.label} {Math.min(entry.current, entry.target)}/{entry.target}
-            </span>
-          ))
-        ) : (
-          <span className="mobile-yaku-chip empty">なし</span>
-        )}
-      </span>
-    </button>
-  )
-}
 
 function MobileYakuRow(props: {
   visibleProgressEntries: readonly VisibleYakuProgressState[]
@@ -811,10 +766,6 @@ function App() {
   )
   const humanVisibleProgressEntries = useMemo(
     () => buildVisibleYakuProgressEntries(buildYakuProgressEntries(humanPanelView.captured, humanPanelView.completedYaku)),
-    [humanPanelView.captured, humanPanelView.completedYaku],
-  )
-  const humanAllProgressEntries = useMemo(
-    () => buildYakuProgressEntries(humanPanelView.captured, humanPanelView.completedYaku),
     [humanPanelView.captured, humanPanelView.completedYaku],
   )
   const isLocalTurn = game.currentPlayerIndex === localPlayerIndex
@@ -1762,7 +1713,7 @@ function App() {
 
   const handleStartHost = useCallback((): void => {
     setIsMatchSurfaceVisible(false)
-    setIsChromeCollapsed(isMobileLayout)
+    setIsChromeCollapsed(false)  // 部屋作成時はヘッダーを隠さない
     resetTransientUiState()
     const initial = createNewGame({
       ...game.config,
@@ -1992,7 +1943,7 @@ function App() {
           <section className={`board-center ${isMobileLayout ? 'mobile' : ''}`} aria-label="対局ボード" onClick={handleBoardClick}>
             <h2>{opponentDisplayName}の手札</h2>
             <div className={`card-rack opponent-rack ${isMobileLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === opponentPlayerIndex ? 'active-turn' : ''}`}>
-              {displayedAiHand.map((card, index) => {
+              {displayedAiHand.map((card) => {
                 const isPlaceholder = pendingAiPlaceholderCardId === card.id
                 const hasActiveMove = activeMoveCardIdSet.has(card.id)
                 const baseTilt = isMobileLayout ? 0 : stableTilt(card.id)
@@ -2058,7 +2009,7 @@ function App() {
 
             <h2>{humanDisplayName}の手札</h2>
             <div className={`card-rack player-rack ${isMobileLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === localPlayerIndex ? 'active-turn' : ''}`}>
-              {displayedHumanHand.map((card, index) => {
+              {displayedHumanHand.map((card) => {
                 const isPlaceholder = pendingPlaceholderCardId === card.id
                 const baseTilt = isMobileLayout ? 0 : stableTilt(card.id)
                 const dragging = handDrag?.cardId === card.id
