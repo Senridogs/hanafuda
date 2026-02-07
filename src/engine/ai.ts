@@ -192,7 +192,7 @@ export function chooseAiMatch(matches: readonly HanafudaCard[], difficulty: stri
 
 // ========== こいこい判定 ==========
 
-function chooseKoiKoi_Yowai(state: KoiKoiGameState): KoiKoiDecision {
+function chooseKoiKoi_Yowai(): KoiKoiDecision {
   // 50%の確率でこいこい
   return Math.random() < 0.5 ? 'koikoi' : 'stop'
 }
@@ -392,7 +392,7 @@ export function chooseAiKoiKoi(state: KoiKoiGameState): KoiKoiDecision {
 
   switch (difficulty) {
     case 'yowai':
-      return chooseKoiKoi_Yowai(state)
+      return chooseKoiKoi_Yowai()
     case 'futsuu':
       return chooseKoiKoi_Futsuu(state)
     case 'tsuyoi':
