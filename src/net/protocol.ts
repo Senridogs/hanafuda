@@ -1,0 +1,142 @@
+import { z } from 'zod'
+import type { KoiKoiGameState } from '../engine/game'
+
+export const playerIdSchema = z.enum(['player1', 'player2'])
+export type PlayerId = z.infer<typeof playerIdSchema>
+
+export const koiKoiDecisionSchema = z.enum(['koikoi', 'stop'])
+
+export const turnCommandSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('playHandCard'),
+    cardId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('selectHandMatch'),
+    fieldCardId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('cancelHandSelection'),
+    insertIndex: z.number().int().nonnegative(),
+  }),
+  z.object({
+    type: z.literal('drawStep'),
+  }),
+  z.object({
+    type: z.literal('commitDrawToField'),
+  }),
+  z.object({
+    type: z.literal('selectDrawMatch'),
+    fieldCardId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal('checkTurn'),
+  }),
+  z.object({
+    type: z.literal('resolveKoiKoi'),
+    decision: koiKoiDecisionSchema,
+  }),
+  z.object({
+    type: z.literal('startNextRound'),
+  }),
+  z.object({
+    type: z.literal('restartGame'),
+    maxRounds: z.union([z.literal(3), z.literal(6), z.literal(12)]),
+  }),
+])
+export type TurnCommand = z.infer<typeof turnCommandSchema>
+
+const roomIdSchema = z.string().min(1)
+const actionIdSchema = z.string().min(1)
+
+export const helloMessageSchema = z.object({
+  type: z.literal('hello'),
+  roomId: roomIdSchema,
+  peerId: z.string().min(1),
+  resumeVersion: z.number().int().nonnegative().optional(),
+})
+
+export const actionMessageSchema = z.object({
+  type: z.literal('action'),
+  roomId: roomIdSchema,
+  actionId: actionIdSchema,
+  from: playerIdSchema,
+  command: turnCommandSchema,
+})
+
+export const stateMessageSchema = z.object({
+  type: z.literal('state'),
+  roomId: roomIdSchema,
+  version: z.number().int().nonnegative(),
+  state: z.unknown(),
+  lastActionId: actionIdSchema.optional(),
+})
+
+export const netErrorCodeSchema = z.enum(['illegal_action', 'out_of_turn', 'invalid_phase', 'unknown'])
+export type NetErrorCode = z.infer<typeof netErrorCodeSchema>
+
+export const errorMessageSchema = z.object({
+  type: z.literal('error'),
+  roomId: roomIdSchema,
+  code: netErrorCodeSchema,
+  message: z.string().min(1),
+})
+
+export const pingMessageSchema = z.object({
+  type: z.literal('ping'),
+  t: z.number(),
+})
+
+export const pongMessageSchema = z.object({
+  type: z.literal('pong'),
+  t: z.number(),
+})
+
+const parsedNetMessageSchema = z.discriminatedUnion('type', [
+  helloMessageSchema,
+  actionMessageSchema,
+  stateMessageSchema,
+  errorMessageSchema,
+  pingMessageSchema,
+  pongMessageSchema,
+])
+
+type ParsedNetMessage = z.infer<typeof parsedNetMessageSchema>
+
+export type HelloMessage = z.infer<typeof helloMessageSchema>
+
+export type ActionMessage = z.infer<typeof actionMessageSchema>
+
+export interface StateMessage extends Omit<z.infer<typeof stateMessageSchema>, 'state'> {
+  readonly state: KoiKoiGameState
+}
+
+export type ErrorMessage = z.infer<typeof errorMessageSchema>
+
+export type PingMessage = z.infer<typeof pingMessageSchema>
+
+export type PongMessage = z.infer<typeof pongMessageSchema>
+
+export type NetMessage = HelloMessage | ActionMessage | StateMessage | ErrorMessage | PingMessage | PongMessage
+
+export function parseNetMessage(value: unknown): NetMessage | null {
+  const parsed = parsedNetMessageSchema.safeParse(value)
+  if (!parsed.success) {
+    return null
+  }
+  return coerceParsedNetMessage(parsed.data)
+}
+
+export function isNetMessage(value: unknown): value is NetMessage {
+  return parseNetMessage(value) !== null
+}
+
+function coerceParsedNetMessage(message: ParsedNetMessage): NetMessage {
+  if (message.type === 'state') {
+    return {
+      ...message,
+      state: message.state as KoiKoiGameState,
+    }
+  }
+  return message
+}
