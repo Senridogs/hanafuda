@@ -1996,17 +1996,6 @@ function App() {
             {/* 場（中央） */}
             {fieldRow}
 
-            {/* 自分の役（モバイルのみ・場の下、手札の上） */}
-            {isMobileLayout ? (
-              <MobileYakuRow
-                visibleProgressEntries={humanVisibleProgressEntries}
-                title={humanDisplayName}
-                active={game.currentPlayerIndex === localPlayerIndex}
-                captureZoneId={humanPlayer.id}
-                onOpenDetail={() => setMobileYakuDetailTarget('self')}
-              />
-            ) : null}
-
             <h2>{humanDisplayName}の手札</h2>
             <div className={`card-rack player-rack ${isMobileLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === localPlayerIndex ? 'active-turn' : ''}`}>
               {displayedHumanHand.map((card) => {
@@ -2089,6 +2078,17 @@ function App() {
                 )
               })}
             </div>
+
+            {/* 自分の役（モバイルのみ・手札の下） */}
+            {isMobileLayout ? (
+              <MobileYakuRow
+                visibleProgressEntries={humanVisibleProgressEntries}
+                title={humanDisplayName}
+                active={game.currentPlayerIndex === localPlayerIndex}
+                captureZoneId={humanPlayer.id}
+                onOpenDetail={() => setMobileYakuDetailTarget('self')}
+              />
+            ) : null}
           </section>
 
           {!isMobileLayout ? (
