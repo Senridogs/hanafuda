@@ -86,7 +86,7 @@ export interface GameConfig {
   readonly targetScore: number
   readonly maxRounds: number
   readonly enableAI: boolean
-  readonly aiDifficulty: 'easy' | 'medium' | 'hard'
+  readonly aiDifficulty: 'yowai' | 'futsuu' | 'tsuyoi' | 'yabai' | 'oni' | 'kami'
   readonly player1Name: string
   readonly player2Name: string
 }
@@ -95,7 +95,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   targetScore: 50,
   maxRounds: 3,
   enableAI: true,
-  aiDifficulty: 'medium',
+  aiDifficulty: 'futsuu',
   player1Name: 'あなた',
   player2Name: 'COM',
 }
