@@ -41,22 +41,6 @@ const DIFFICULTY_SEED_OFFSET: Record<GameConfig['aiDifficulty'], number> = {
 }
 
 const CPU_ASSIST_BY_DIFFICULTY: Partial<Record<GameConfig['aiDifficulty'], CpuAssistProfile>> = {
-  yowai: {
-    openingMargin: 2,
-    maxExtraRetries: 4,
-    drawSearchWindow: 2,
-    drawRigChance: 0.14,
-    openingBias: 'favor-human',
-    drawBias: 'worst',
-  },
-  tsuyoi: {
-    openingMargin: 2,
-    maxExtraRetries: 10,
-    drawSearchWindow: 2,
-    drawRigChance: 0.22,
-    openingBias: 'favor-ai',
-    drawBias: 'best',
-  },
   oni: {
     openingMargin: 5,
     maxExtraRetries: 16,

@@ -227,21 +227,21 @@ const RULE_HELP_COUNT_YAKU_ENTRIES: readonly RuleHelpYakuEntry[] = [
     key: 'tane',
     name: 'たね',
     condition: '種札を5枚以上',
-    points: '1点 + (種札 - 5)',
+    points: '1点 + 追加種札で加点',
     exampleCardIds: ['feb-tane', 'apr-tane', 'may-tane', 'jun-tane', 'jul-tane'],
   },
   {
     key: 'tanzaku',
     name: 'たんざく',
     condition: '短冊札を5枚以上',
-    points: '1点 + (短冊 - 5)',
+    points: '1点 + 追加短冊で加点',
     exampleCardIds: ['jan-tanzaku', 'feb-tanzaku', 'mar-tanzaku', 'jun-tanzaku', 'sep-tanzaku'],
   },
   {
     key: 'kasu',
     name: 'かす',
     condition: 'カス札を10枚以上',
-    points: '1点 + (カス - 10)',
+    points: '1点 + 追加カス札で加点',
     exampleCardIds: [
       'jan-kasu-1',
       'jan-kasu-2',
@@ -256,6 +256,10 @@ const RULE_HELP_COUNT_YAKU_ENTRIES: readonly RuleHelpYakuEntry[] = [
     ],
   },
 ] as const
+const RULE_HELP_BASIC_YAKU_ENTRIES: readonly RuleHelpYakuEntry[] = [
+  ...RULE_HELP_HIGH_YAKU_ENTRIES,
+  ...RULE_HELP_COUNT_YAKU_ENTRIES,
+]
 const RULE_HELP_SCORING_NOTES: readonly string[] = [
   '役が1つもない場合は1点で上がりになります。',
   '役合計が7点以上なら最終得点が2倍になります。',
@@ -818,32 +822,40 @@ function RuleHelpYakuPage(props: {
   const { entries, notes } = props
   return (
     <div className="rule-help-yaku-layout">
-      <div className="rule-help-yaku-list">
-        {entries.map((entry) => {
-          const exampleCards = getRuleHelpExampleCards(entry.exampleCardIds)
-          return (
-            <article key={entry.key} className="rule-help-yaku-item">
-              <div className="rule-help-yaku-head">
-                <h3>{entry.name}</h3>
-                <span>{entry.points}</span>
-              </div>
-              <p>{entry.condition}</p>
-              {exampleCards.length > 0 ? (
-                <div className="rule-help-yaku-example" aria-label={`${entry.name}のカード例`}>
-                  {exampleCards.map((card) => (
-                    <img
-                      key={`${entry.key}-${card.id}`}
-                      src={getCardImageUrl(card)}
-                      alt={`${card.month}月 ${card.name}`}
-                      loading="lazy"
-                    />
-                  ))}
+      {entries.length > 0 ? (
+        <div className="rule-help-yaku-list">
+          {entries.map((entry) => {
+            const exampleCards = getRuleHelpExampleCards(entry.exampleCardIds)
+            const stackedExample = entry.key === 'kasu'
+            return (
+              <article key={entry.key} className="rule-help-yaku-item">
+                <div className="rule-help-yaku-head">
+                  <h3>{entry.name}</h3>
+                  <span>{entry.points}</span>
                 </div>
-              ) : null}
-            </article>
-          )
-        })}
-      </div>
+                <div className="rule-help-yaku-body">
+                  {exampleCards.length > 0 ? (
+                    <div
+                      className={`rule-help-yaku-example${stackedExample ? ' stacked' : ''}`}
+                      aria-label={`${entry.name}のカード例`}
+                    >
+                      {exampleCards.map((card) => (
+                        <img
+                          key={`${entry.key}-${card.id}`}
+                          src={getCardImageUrl(card)}
+                          alt={`${card.month}月 ${card.name}`}
+                          loading="lazy"
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className="rule-help-yaku-desc">{entry.condition}</p>
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      ) : null}
       {notes && notes.length > 0 ? (
         <ul className="rule-help-notes">
           {notes.map((note) => (
@@ -1324,6 +1336,10 @@ function App() {
     if (typeof window === 'undefined') return false
     return window.innerWidth > window.innerHeight
   })
+  const [ruleHelpViewport, setRuleHelpViewport] = useState(() => ({
+    width: typeof window === 'undefined' ? 1280 : window.innerWidth,
+    height: typeof window === 'undefined' ? 720 : window.innerHeight,
+  }))
   const appContainerRef = useRef<HTMLDivElement>(null)
   const [isMatchSurfaceVisible, setIsMatchSurfaceVisible] = useState(false)
   const [pendingHandPlaceholder, setPendingHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
@@ -1395,9 +1411,21 @@ function App() {
   // Portrait fullscreen keeps mobile layout
   const useMobileViewLayout = isMobileLayout && !(isLandscapeFullscreen && isLandscapeOrientation)
   const ruleHelpPages = useMemo<readonly RuleHelpPage[]>(() => {
-    const monthRanges: ReadonlyArray<readonly [number, number]> = isMobileLayout
-      ? [[1, 4], [5, 8], [9, 12]]
-      : [[1, 12]]
+    const monthRanges: ReadonlyArray<readonly [number, number]> = (() => {
+      if (!isMobileLayout) {
+        return [[1, 12]]
+      }
+      const estimatedPanelHeight = Math.min(ruleHelpViewport.height * 0.9, 780)
+      const monthChromeHeight = 206
+      const monthRowHeight = ruleHelpViewport.width <= 360 ? 112 : ruleHelpViewport.width <= 420 ? 104 : 98
+      const estimatedMonthsPerPage = Math.floor((estimatedPanelHeight - monthChromeHeight) / monthRowHeight)
+      const monthsPerPage = Math.max(1, Math.min(12, estimatedMonthsPerPage))
+      const ranges: Array<readonly [number, number]> = []
+      for (let startMonth = 1; startMonth <= 12; startMonth += monthsPerPage) {
+        ranges.push([startMonth, Math.min(12, startMonth + monthsPerPage - 1)])
+      }
+      return ranges
+    })()
 
     const monthPages: RuleHelpPage[] = monthRanges.map(([startMonth, endMonth], index) => ({
       key: `months-${index + 1}`,
@@ -1406,22 +1434,50 @@ function App() {
       content: <RuleHelpMonthPage startMonth={startMonth} endMonth={endMonth} compact />,
     }))
 
-    return [
-      ...monthPages,
-      {
+    const chunkYakuEntries = (
+      entries: readonly RuleHelpYakuEntry[],
+      chunkSize: number,
+    ): RuleHelpYakuEntry[][] => {
+      const chunks: RuleHelpYakuEntry[][] = []
+      for (let index = 0; index < entries.length; index += chunkSize) {
+        chunks.push([...entries.slice(index, index + chunkSize)])
+      }
+      return chunks
+    }
+
+    const yakuPages: RuleHelpPage[] = []
+    if (!isMobileLayout) {
+      yakuPages.push({
         key: 'yaku-main',
         title: '役一覧（基本役）',
-        subtitle: '高得点役・組み合わせ役',
-        content: <RuleHelpYakuPage entries={RULE_HELP_HIGH_YAKU_ENTRIES} />,
-      },
-      {
-        key: 'yaku-count',
-        title: '役一覧（枚数役）',
-        subtitle: '枚数で伸びる役と倍率',
-        content: <RuleHelpYakuPage entries={RULE_HELP_COUNT_YAKU_ENTRIES} notes={RULE_HELP_SCORING_NOTES} />,
-      },
+        subtitle: '点数役・枚数役',
+        content: <RuleHelpYakuPage entries={RULE_HELP_BASIC_YAKU_ENTRIES} notes={RULE_HELP_SCORING_NOTES} />,
+      })
+    } else {
+      const estimatedPanelHeight = Math.min(ruleHelpViewport.height * 0.9, 780)
+      const yakuChromeHeight = 176
+      const yakuRowHeight = ruleHelpViewport.width <= 360 ? 114 : ruleHelpViewport.width <= 420 ? 106 : 100
+      const estimatedRowsPerPage = Math.floor((estimatedPanelHeight - yakuChromeHeight) / yakuRowHeight)
+      const yakuRowsPerPage = Math.max(2, Math.min(6, estimatedRowsPerPage))
+      const basicChunks = chunkYakuEntries(RULE_HELP_BASIC_YAKU_ENTRIES, yakuRowsPerPage)
+
+      basicChunks.forEach((chunk, index) => {
+        const totalPages = basicChunks.length
+        const isLastChunk = index === totalPages - 1
+        yakuPages.push({
+          key: `yaku-main-${index + 1}`,
+          title: totalPages > 1 ? `役一覧（基本役 ${index + 1}/${totalPages}）` : '役一覧（基本役）',
+          subtitle: '点数役・枚数役',
+          content: <RuleHelpYakuPage entries={chunk} notes={isLastChunk ? RULE_HELP_SCORING_NOTES : undefined} />,
+        })
+      })
+    }
+
+    return [
+      ...monthPages,
+      ...yakuPages,
     ]
-  }, [isMobileLayout])
+  }, [isMobileLayout, ruleHelpViewport.height, ruleHelpViewport.width])
   const currentRuleHelpPage = ruleHelpPages[ruleHelpPageIndex] ?? ruleHelpPages[0]
 
   useEffect(() => {
@@ -1449,8 +1505,17 @@ function App() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     const onResize = (): void => {
-      setIsLandscapeOrientation(window.innerWidth > window.innerHeight)
+      const nextWidth = window.innerWidth
+      const nextHeight = window.innerHeight
+      setIsLandscapeOrientation(nextWidth > nextHeight)
+      setRuleHelpViewport((current) => {
+        if (current.width === nextWidth && current.height === nextHeight) {
+          return current
+        }
+        return { width: nextWidth, height: nextHeight }
+      })
     }
+    onResize()
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
@@ -2840,14 +2905,23 @@ function App() {
 
   const handleAppPointerDown = useCallback((event: PointerEvent<HTMLElement>): void => {
     const target = event.target as HTMLElement | null
-    if (!target || target.closest('.lobby-input')) {
+    if (!target) {
       return
     }
-    const active = document.activeElement
-    if (active instanceof HTMLElement && active.matches('input, textarea, [contenteditable="true"]')) {
-      active.blur()
+    if (!target.closest('.lobby-input')) {
+      const active = document.activeElement
+      if (active instanceof HTMLElement && active.matches('input, textarea, [contenteditable="true"]')) {
+        active.blur()
+      }
     }
-  }, [])
+    if (isChromeCollapsed) {
+      return
+    }
+    if (target.closest('.app-chrome-panel') || target.closest('.header-settings-toggle-button')) {
+      return
+    }
+    setIsChromeCollapsed(true)
+  }, [isChromeCollapsed])
 
   const handleFieldCard = (card: HanafudaCard): void => {
     if (isAiTurn || interactionLocked) {
@@ -3083,7 +3157,7 @@ function App() {
   return (
     <main ref={appContainerRef} className={`app ${isChromeCollapsed ? 'chrome-collapsed' : ''}`} onPointerDown={handleAppPointerDown}>
       <section className={`app-chrome ${isChromeCollapsed ? 'collapsed' : 'expanded'}`}>
-        <div className="chrome-toggle-row">
+        <div className={`chrome-toggle-row ${!useMobileViewLayout ? 'desktop-controls' : ''}`}>
           {isMobileLayout && !isLandscapeFullscreen ? (
             <button
               type="button"
@@ -3114,7 +3188,7 @@ function App() {
           </button>
           <button
             type="button"
-            className="chrome-toggle-button"
+            className="chrome-toggle-button header-settings-toggle-button"
             onClick={() => setIsChromeCollapsed((current) => !current)}
             aria-expanded={!isChromeCollapsed}
           >

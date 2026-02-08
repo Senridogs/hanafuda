@@ -77,6 +77,15 @@
     linear-gradient(170deg, #bfb472 0%, #c7bc7e 45%, #b8ad6a 100%);
 }
 
+.app,
+.app button,
+.app input,
+.app select,
+.app textarea,
+.app code {
+  font-family: inherit;
+}
+
 .app.chrome-collapsed {
   gap: 0;
 }
@@ -141,6 +150,12 @@
   max-width: 100%;
   width: max-content;
   pointer-events: auto;
+}
+
+.chrome-toggle-row.desktop-controls .chrome-toggle-button,
+.chrome-toggle-row.desktop-controls .fullscreen-button {
+  padding: 6px 16px;
+  font-size: 1.3rem;
 }
 
 .topbar {
@@ -326,7 +341,7 @@
 }
 
 .lobby-log-item {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: inherit;
   font-size: 0.72rem;
   line-height: 1.35;
   color: #c8d8ea;
@@ -490,6 +505,10 @@
   border: none;
   border-radius: 0;
   box-shadow: none;
+}
+
+.board-center:not(.mobile) {
+  justify-content: center;
 }
 
 .board-center h2 {
@@ -741,7 +760,7 @@ button.mobile-yaku-strip.active {
   min-height: 0;
   font-size: var(--mobile-yaku-font-header);
   font-weight: 700;
-  color: #ffd85e;
+  color: #d9ad2f;
   padding: 0;
   z-index: 1;
 }
@@ -749,7 +768,7 @@ button.mobile-yaku-strip.active {
 .mobile-mini-name {
   font-size: calc(var(--mobile-yaku-font-header) * 0.9);
   font-weight: 700;
-  color: #ffd85e;
+  color: #d9ad2f;
   letter-spacing: 0.04em;
   text-shadow: 0 2px 10px rgb(0 0 0 / 54%);
 }
@@ -758,7 +777,7 @@ button.mobile-yaku-strip.active {
   position: static;
   font-size: var(--mobile-yaku-font-header);
   font-weight: 800;
-  color: #ffd85e;
+  color: #d9ad2f;
   letter-spacing: 0.05em;
   text-shadow: 0 2px 10px rgb(0 0 0 / 54%);
 }
@@ -1127,7 +1146,7 @@ button.mobile-yaku-strip.active {
 .yaku-panel .panel-player-name {
   margin: 0;
   font-size: 0.8rem;
-  color: #ffd85e;
+  color: #d9ad2f;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-shadow: 0 2px 10px rgb(0 0 0 / 58%);
@@ -1137,7 +1156,7 @@ button.mobile-yaku-strip.active {
   position: static;
   font-size: 0.85rem;
   font-weight: 800;
-  color: #ffd85e;
+  color: #d9ad2f;
   letter-spacing: 0.05em;
   text-shadow: 0 2px 10px rgb(0 0 0 / 58%);
 }
@@ -2080,6 +2099,11 @@ button:hover {
     padding: 10px;
   }
 
+  .chrome-toggle-button,
+  .fullscreen-button {
+    background: rgb(0 0 0 / 52%);
+  }
+
   .mobile-yaku-section {
     background: rgb(255 247 204 / 72%);
   }
@@ -2241,7 +2265,7 @@ button:hover {
 
   .rule-help-panel {
     width: 100%;
-    height: min(86dvh, 760px);
+    height: min(90dvh, 780px);
     border-radius: 14px 14px 0 0;
     border-bottom: 0;
   }
@@ -2260,24 +2284,71 @@ button:hover {
     font-size: 0.68rem;
   }
 
-  .rule-help-month-grid.compact {
-    --rule-help-month-compact-card-width: clamp(27px, 7vw, 36px);
+  .rule-help-panel .rule-help-month-grid.compact {
+    --rule-help-month-compact-card-width: clamp(54px, 3.45vw, 72px);
     grid-template-columns: minmax(0, 1fr);
     gap: 4px;
   }
 
-  .rule-help-month-grid.compact .rule-help-month-section {
+  .rule-help-panel .rule-help-month-grid.compact .rule-help-month-section {
     grid-template-columns: 40px minmax(0, 1fr);
     gap: 4px;
     padding: 4px 6px;
   }
 
-  .rule-help-month-grid.compact .rule-help-month-card-list {
+  .rule-help-panel .rule-help-month-grid.compact .rule-help-month-card-list {
     gap: 2px;
   }
 
-  .rule-help-yaku-example img {
-    width: clamp(18px, 5vw, 24px);
+  .rule-help-panel .rule-help-yaku-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .rule-help-panel .rule-help-yaku-layout {
+    gap: 6px;
+  }
+
+  .rule-help-panel .rule-help-yaku-item {
+    padding: 6px 8px;
+    border-radius: 8px;
+  }
+
+  .rule-help-panel .rule-help-yaku-body {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+  }
+
+  .rule-help-panel .rule-help-yaku-head h3 {
+    font-size: 0.72rem;
+  }
+
+  .rule-help-panel .rule-help-yaku-head span {
+    font-size: 0.66rem;
+  }
+
+  .rule-help-panel .rule-help-yaku-desc {
+    margin: 0;
+    font-size: 0.62rem;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    min-width: 0;
+    align-self: center;
+    display: flex;
+    align-items: center;
+  }
+
+  .rule-help-panel .rule-help-yaku-example {
+    --rule-help-yaku-example-gap: 3px;
+    margin-top: 0;
+    gap: var(--rule-help-yaku-example-gap);
+    flex-wrap: nowrap;
+  }
+
+  .rule-help-panel .rule-help-yaku-example img {
+    width: var(--rule-help-yaku-example-card-width);
   }
 }
 
@@ -2793,28 +2864,57 @@ button:hover {
   font-weight: 700;
 }
 
-.rule-help-yaku-item p {
-  margin: 4px 0 0;
+.rule-help-yaku-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.rule-help-yaku-desc {
+  margin: 0;
   font-size: 0.72rem;
   color: #d8cfbe;
   line-height: 1.45;
+  min-width: 0;
+  align-self: center;
+  display: flex;
+  align-items: center;
 }
 
 .rule-help-yaku-example {
-  margin-top: 6px;
+  --rule-help-yaku-example-card-width: clamp(36px, 2.3vw, 48px);
+  --rule-help-yaku-example-gap: 4px;
+  --rule-help-yaku-stack-step-ratio: 0.32;
+  --rule-help-yaku-stack-step: calc(
+    (var(--rule-help-yaku-example-card-width) + var(--rule-help-yaku-example-gap)) *
+      var(--rule-help-yaku-stack-step-ratio)
+  );
+  margin-top: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--rule-help-yaku-example-gap);
 }
 
 .rule-help-yaku-example img {
-  width: clamp(36px, 2.3vw, 48px);
+  box-sizing: border-box;
+  width: var(--rule-help-yaku-example-card-width);
   aspect-ratio: 512 / 839;
   border-radius: 4px;
   border: 1px solid rgb(255 223 179 / 24%);
   object-fit: contain;
   object-position: center;
   background: #fff;
+}
+
+.rule-help-yaku-example.stacked {
+  flex-wrap: nowrap;
+  gap: 0;
+  width: calc(var(--rule-help-yaku-example-card-width) + (var(--rule-help-yaku-stack-step) * 9));
+}
+
+.rule-help-yaku-example.stacked img + img {
+  margin-left: calc(var(--rule-help-yaku-stack-step) - var(--rule-help-yaku-example-card-width));
 }
 
 .rule-help-notes {

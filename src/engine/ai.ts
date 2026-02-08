@@ -37,6 +37,8 @@ interface SearchProfile {
   readonly opponentReplySamples: number
   readonly twoPlyWeight: number
   readonly reboundWeight: number
+  readonly usePerfectInfo: boolean
+  readonly knownTurnPressureWeight: number
   readonly handPotentialWeight: number
   readonly topN: number
 }
@@ -52,54 +54,32 @@ const TSUYOI_PROFILE: SearchProfile = {
   opponentReplySamples: 10,
   twoPlyWeight: 0.11,
   reboundWeight: 0.54,
+  usePerfectInfo: false,
+  knownTurnPressureWeight: 0,
   handPotentialWeight: 0.29,
   topN: 2,
 }
 
 const YABAI_PROFILE: SearchProfile = {
   drawSamples: Number.MAX_SAFE_INTEGER,
-  immediateProgressWeight: 1.16,
-  immediateCaptureWeight: 2.75,
-  drawExpectationWeight: 1.25,
-  fieldRiskWeight: 0.44,
-  opponentThreatWeight: 0.38,
-  opponentReplyWeight: 0.42,
-  opponentReplySamples: 18,
-  twoPlyWeight: 0.34,
-  reboundWeight: 0.68,
-  handPotentialWeight: 0.56,
+  immediateProgressWeight: 1.24,
+  immediateCaptureWeight: 3.05,
+  drawExpectationWeight: 1.42,
+  fieldRiskWeight: 0.33,
+  opponentThreatWeight: 0.29,
+  opponentReplyWeight: 0.31,
+  opponentReplySamples: 24,
+  twoPlyWeight: 0.24,
+  reboundWeight: 0.74,
+  usePerfectInfo: true,
+  knownTurnPressureWeight: 0.49,
+  handPotentialWeight: 0.68,
   topN: 1,
 }
 
-const ONI_PROFILE: SearchProfile = {
-  drawSamples: Number.MAX_SAFE_INTEGER,
-  immediateProgressWeight: 1.16,
-  immediateCaptureWeight: 2.75,
-  drawExpectationWeight: 1.25,
-  fieldRiskWeight: 0.44,
-  opponentThreatWeight: 0.38,
-  opponentReplyWeight: 0.42,
-  opponentReplySamples: 18,
-  twoPlyWeight: 0.34,
-  reboundWeight: 0.68,
-  handPotentialWeight: 0.56,
-  topN: 1,
-}
+const ONI_PROFILE: SearchProfile = YABAI_PROFILE
 
-const KAMI_PROFILE: SearchProfile = {
-  drawSamples: Number.MAX_SAFE_INTEGER,
-  immediateProgressWeight: 1.16,
-  immediateCaptureWeight: 2.75,
-  drawExpectationWeight: 1.25,
-  fieldRiskWeight: 0.44,
-  opponentThreatWeight: 0.38,
-  opponentReplyWeight: 0.42,
-  opponentReplySamples: 18,
-  twoPlyWeight: 0.34,
-  reboundWeight: 0.68,
-  handPotentialWeight: 0.56,
-  topN: 1,
-}
+const KAMI_PROFILE: SearchProfile = YABAI_PROFILE
 
 interface HandStepOutcome {
   readonly chosenMatch: HanafudaCard | null
@@ -393,6 +373,82 @@ function evaluateImmediateCaptureGain(
   return capturedDelta + cardGain * 1.1 + dangerRelief * 0.35
 }
 
+function projectDeterministicTopDraw(
+  deck: readonly HanafudaCard[],
+  fieldAfterHand: readonly HanafudaCard[],
+  capturedAfterHand: readonly HanafudaCard[],
+): { gain: number; fieldAfter: readonly HanafudaCard[]; capturedAfter: readonly HanafudaCard[]; deckConsumed: number } {
+  const drawCard = deck[0]
+  if (!drawCard) {
+    return {
+      gain: 0,
+      fieldAfter: fieldAfterHand,
+      capturedAfter: capturedAfterHand,
+      deckConsumed: 0,
+    }
+  }
+
+  const baselineCaptured = evaluateCapturedStrength(capturedAfterHand)
+  const baselineDanger = evaluateFieldDanger(fieldAfterHand)
+  const simulated = simulateBestImmediateHandCapture(fieldAfterHand, capturedAfterHand, drawCard)
+
+  return {
+    gain: evaluateImmediateCaptureGain(baselineCaptured, baselineDanger, simulated),
+    fieldAfter: simulated.fieldAfter,
+    capturedAfter: simulated.capturedAfter,
+    deckConsumed: 1,
+  }
+}
+
+function estimateOpponentKnownTurnPressure(
+  state: KoiKoiGameState,
+  fieldBeforeOpponentTurn: readonly HanafudaCard[],
+  ownCapturedAfterOwnTurn: readonly HanafudaCard[],
+  ownRemainingHand: readonly HanafudaCard[],
+  opponentDrawDeckOffset: number,
+  profile: SearchProfile,
+): number {
+  const aiIndex = state.currentPlayerIndex
+  const opponentIndex: 0 | 1 = aiIndex === 0 ? 1 : 0
+  const opponent = state.players[opponentIndex]
+  if (opponent.hand.length === 0) {
+    return 0
+  }
+
+  const oppCapturedBaseScore = evaluateCapturedStrength(opponent.captured)
+  const oppFieldBaseDanger = evaluateFieldDanger(fieldBeforeOpponentTurn)
+  let worstPressure = 0
+
+  for (const handCard of opponent.hand) {
+    const handStep = simulateBestImmediateHandCapture(fieldBeforeOpponentTurn, opponent.captured, handCard)
+    const handGain = evaluateImmediateCaptureGain(oppCapturedBaseScore, oppFieldBaseDanger, handStep)
+
+    const drawCard = state.deck[opponentDrawDeckOffset]
+    let fieldAfterTurn = handStep.fieldAfter
+    let capturedAfterTurn = handStep.capturedAfter
+    let drawGain = 0
+    if (drawCard) {
+      const drawBaseCapturedScore = evaluateCapturedStrength(handStep.capturedAfter)
+      const drawBaseDanger = evaluateFieldDanger(handStep.fieldAfter)
+      const drawStep = simulateBestImmediateHandCapture(handStep.fieldAfter, handStep.capturedAfter, drawCard)
+      drawGain = evaluateImmediateCaptureGain(drawBaseCapturedScore, drawBaseDanger, drawStep)
+      fieldAfterTurn = drawStep.fieldAfter
+      capturedAfterTurn = drawStep.capturedAfter
+    }
+
+    const stopPoints = estimateStopPointsFromCaptured(capturedAfterTurn, state.koikoiCounts[aiIndex] > 0)
+    const stopPotential = stopPoints * 10
+    const ownRebound = estimateOwnBestNextReplyGain(ownRemainingHand, fieldAfterTurn, ownCapturedAfterOwnTurn)
+
+    const pressure = handGain + drawGain + stopPotential - ownRebound * profile.reboundWeight
+    if (pressure > worstPressure) {
+      worstPressure = pressure
+    }
+  }
+
+  return worstPressure
+}
+
 function estimateOwnBestNextReplyGain(
   ownRemainingHand: readonly HanafudaCard[],
   fieldAfterOpponent: readonly HanafudaCard[],
@@ -599,34 +655,66 @@ function evaluateHandOutcome(
   profile: SearchProfile,
 ): number {
   const aiPlayer = state.players[state.currentPlayerIndex]
+  const opponentIndex: 0 | 1 = state.currentPlayerIndex === 0 ? 1 : 0
   const capturedBeforeScore = evaluateCapturedStrength(aiPlayer.captured)
   const capturedAfterScore = evaluateCapturedStrength(outcome.capturedAfter)
   const capturedDelta = capturedAfterScore - capturedBeforeScore
   const immediateCardGain = outcome.capturedNow.reduce((sum, card) => sum + tacticalCardValue(card), 0)
 
   const remainingHand = aiPlayer.hand.filter((card) => card.id !== handCard.id)
-  const futureHandPotential = evaluateFutureHandPotential(remainingHand, outcome.fieldAfter)
-  const drawCandidates = buildUnknownDrawCandidates(state, remainingHand, outcome.fieldAfter, outcome.capturedAfter)
-  const drawExpectation = estimateDrawExpectation(drawCandidates, outcome.fieldAfter, outcome.capturedAfter, profile)
-  const fieldRisk = evaluateFieldDanger(outcome.fieldAfter)
-  const opponentThreat = estimateOpponentCaptureThreat(outcome.fieldAfter, drawCandidates)
-  const opponentReplyPressure = estimateOpponentBestReplyPressure(
-    state,
-    outcome.fieldAfter,
-    drawCandidates,
-    profile,
-  )
-  const twoPlyPressure = estimateTwoPlyPressure(
-    state,
-    outcome.fieldAfter,
-    outcome.capturedAfter,
-    remainingHand,
-    drawCandidates,
-    profile,
-  )
+  const drawProjection = profile.usePerfectInfo
+    ? projectDeterministicTopDraw(state.deck, outcome.fieldAfter, outcome.capturedAfter)
+    : {
+      gain: estimateDrawExpectation(
+        buildUnknownDrawCandidates(state, remainingHand, outcome.fieldAfter, outcome.capturedAfter),
+        outcome.fieldAfter,
+        outcome.capturedAfter,
+        profile,
+      ),
+      fieldAfter: outcome.fieldAfter,
+      capturedAfter: outcome.capturedAfter,
+      deckConsumed: 0,
+    }
+  const fieldAfterOwnTurn = drawProjection.fieldAfter
+  const capturedAfterOwnTurn = drawProjection.capturedAfter
+
+  const futureHandPotential = evaluateFutureHandPotential(remainingHand, fieldAfterOwnTurn)
+  const drawCandidates = buildUnknownDrawCandidates(state, remainingHand, fieldAfterOwnTurn, capturedAfterOwnTurn)
+  const drawExpectation = drawProjection.gain
+  const fieldRisk = evaluateFieldDanger(fieldAfterOwnTurn)
+  const opponentThreat = estimateOpponentCaptureThreat(fieldAfterOwnTurn, drawCandidates)
+
+  const opponentReplyPressure = profile.usePerfectInfo
+    ? 0
+    : estimateOpponentBestReplyPressure(
+      state,
+      fieldAfterOwnTurn,
+      drawCandidates,
+      profile,
+    )
+  const twoPlyPressure = profile.usePerfectInfo
+    ? 0
+    : estimateTwoPlyPressure(
+      state,
+      fieldAfterOwnTurn,
+      capturedAfterOwnTurn,
+      remainingHand,
+      drawCandidates,
+      profile,
+    )
+  const knownTurnPressure = profile.usePerfectInfo
+    ? estimateOpponentKnownTurnPressure(
+      state,
+      fieldAfterOwnTurn,
+      capturedAfterOwnTurn,
+      remainingHand,
+      drawProjection.deckConsumed,
+      profile,
+    )
+    : 0
   const stopPoints = estimateStopPointsFromCaptured(
-    outcome.capturedAfter,
-    state.koikoiCounts[state.currentPlayerIndex === 0 ? 1 : 0] > 0,
+    capturedAfterOwnTurn,
+    state.koikoiCounts[opponentIndex] > 0,
   )
   const stopPotential = stopPoints * 18
 
@@ -639,6 +727,7 @@ function evaluateHandOutcome(
     - opponentThreat * profile.opponentThreatWeight
     - opponentReplyPressure * profile.opponentReplyWeight
     - twoPlyPressure * profile.twoPlyWeight
+    - knownTurnPressure * profile.knownTurnPressureWeight
 }
 
 function chooseByProfile(state: KoiKoiGameState, profile: SearchProfile): HanafudaCard | null {
@@ -766,6 +855,7 @@ function chooseMatch_Futsuu(matches: readonly HanafudaCard[]): HanafudaCard | nu
 
 function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: HanafudaCard, profile: SearchProfile): number {
   const aiPlayer = state.players[state.currentPlayerIndex]
+  const opponentIndex: 0 | 1 = state.currentPlayerIndex === 0 ? 1 : 0
   const sourceCard = state.pendingSource === 'hand' ? state.selectedHandCard : state.drawnCard
 
   if (!sourceCard) {
@@ -777,26 +867,51 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
   const capturedAfter = evaluateCapturedStrength(simulated.capturedAfter)
   const capturedDelta = capturedAfter - capturedBefore
   const immediateCardGain = simulated.capturedNow.reduce((sum, card) => sum + tacticalCardValue(card), 0)
-  const fieldRisk = evaluateFieldDanger(simulated.fieldAfter)
-  const drawCandidates = buildUnknownDrawCandidates(state, aiPlayer.hand, simulated.fieldAfter, simulated.capturedAfter)
-  const opponentThreat = estimateOpponentCaptureThreat(simulated.fieldAfter, drawCandidates)
-  const opponentReplyPressure = estimateOpponentBestReplyPressure(
-    state,
-    simulated.fieldAfter,
-    drawCandidates,
-    profile,
-  )
-  const twoPlyPressure = estimateTwoPlyPressure(
-    state,
-    simulated.fieldAfter,
-    simulated.capturedAfter,
-    aiPlayer.hand,
-    drawCandidates,
-    profile,
-  )
+  const drawProjection = profile.usePerfectInfo && state.pendingSource === 'hand'
+    ? projectDeterministicTopDraw(state.deck, simulated.fieldAfter, simulated.capturedAfter)
+    : {
+      gain: 0,
+      fieldAfter: simulated.fieldAfter,
+      capturedAfter: simulated.capturedAfter,
+      deckConsumed: 0,
+    }
+  const fieldAfterOwnTurn = drawProjection.fieldAfter
+  const capturedAfterOwnTurn = drawProjection.capturedAfter
+
+  const drawCandidates = buildUnknownDrawCandidates(state, aiPlayer.hand, fieldAfterOwnTurn, capturedAfterOwnTurn)
+  const fieldRisk = evaluateFieldDanger(fieldAfterOwnTurn)
+  const opponentThreat = estimateOpponentCaptureThreat(fieldAfterOwnTurn, drawCandidates)
+  const opponentReplyPressure = profile.usePerfectInfo
+    ? 0
+    : estimateOpponentBestReplyPressure(
+      state,
+      fieldAfterOwnTurn,
+      drawCandidates,
+      profile,
+    )
+  const twoPlyPressure = profile.usePerfectInfo
+    ? 0
+    : estimateTwoPlyPressure(
+      state,
+      fieldAfterOwnTurn,
+      capturedAfterOwnTurn,
+      aiPlayer.hand,
+      drawCandidates,
+      profile,
+    )
+  const knownTurnPressure = profile.usePerfectInfo
+    ? estimateOpponentKnownTurnPressure(
+      state,
+      fieldAfterOwnTurn,
+      capturedAfterOwnTurn,
+      aiPlayer.hand,
+      drawProjection.deckConsumed,
+      profile,
+    )
+    : 0
   const stopPoints = estimateStopPointsFromCaptured(
-    simulated.capturedAfter,
-    state.koikoiCounts[state.currentPlayerIndex === 0 ? 1 : 0] > 0,
+    capturedAfterOwnTurn,
+    state.koikoiCounts[opponentIndex] > 0,
   )
   const stopPotential = stopPoints * 18
 
@@ -807,10 +922,13 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
     - opponentThreat * profile.opponentThreatWeight
     - opponentReplyPressure * profile.opponentReplyWeight
     - twoPlyPressure * profile.twoPlyWeight
+    - knownTurnPressure * profile.knownTurnPressureWeight
 
   if (state.pendingSource === 'hand') {
-    const handPotential = evaluateFutureHandPotential(aiPlayer.hand, simulated.fieldAfter)
-    const drawExpectation = estimateDrawExpectation(drawCandidates, simulated.fieldAfter, simulated.capturedAfter, profile)
+    const handPotential = evaluateFutureHandPotential(aiPlayer.hand, fieldAfterOwnTurn)
+    const drawExpectation = profile.usePerfectInfo
+      ? drawProjection.gain
+      : estimateDrawExpectation(drawCandidates, simulated.fieldAfter, simulated.capturedAfter, profile)
     score += handPotential * profile.handPotentialWeight
     score += drawExpectation * profile.drawExpectationWeight
   }
