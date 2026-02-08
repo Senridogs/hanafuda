@@ -2456,6 +2456,16 @@ button:hover {
 }
 
 /* Score Table */
+.score-table-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(2 7 12 / 46%);
+}
+
 .score-table-panel {
   position: fixed;
   left: 50%;
@@ -2505,9 +2515,18 @@ button:hover {
 }
 
 .score-table table {
-  width: 100%;
   border-collapse: collapse;
   font-size: 0.78rem;
+}
+
+.score-table.month-horizontal table {
+  width: max-content;
+  min-width: 100%;
+}
+
+.score-table.month-vertical table {
+  width: 100%;
+  min-width: 100%;
 }
 
 .score-table th,
@@ -2515,6 +2534,7 @@ button:hover {
   padding: 6px 8px;
   text-align: center;
   border-bottom: 1px solid rgb(255 223 179 / 12%);
+  min-width: 44px;
 }
 
 .score-table th {
@@ -2525,8 +2545,17 @@ button:hover {
   background: rgb(0 0 0 / 20%);
 }
 
-.score-table .score-table-header-month {
-  width: 50px;
+.score-table.month-horizontal .score-table-header-player,
+.score-table.month-horizontal .score-table-player {
+  min-width: 74px;
+  text-align: left;
+  padding-left: 10px;
+}
+
+.score-table.month-vertical .score-table-header-month,
+.score-table.month-vertical .score-table-month {
+  min-width: 56px;
+  width: 56px;
 }
 
 .score-table .score-table-month {
@@ -2538,7 +2567,7 @@ button:hover {
   border-bottom: 1px solid rgb(255 223 179 / 22%);
 }
 
-.score-table tbody tr.current-round {
+.score-table .current-round {
   background: rgb(100 180 255 / 10%);
 }
 
@@ -2547,18 +2576,65 @@ button:hover {
   font-weight: 600;
 }
 
-.score-table tfoot tr.score-table-total td {
+.score-table td.score-table-total {
   border-bottom: none;
-  padding-top: 10px;
   font-weight: 700;
   font-size: 0.82rem;
   color: #f7f0e2;
 }
 
-.score-table tfoot td.leading {
+.score-table td.leading {
   color: #ffd280;
   background: rgb(200 140 50 / 16%);
   border-radius: 6px;
+}
+
+@media (min-width: 721px) {
+  .score-table-panel {
+    width: min(1120px, calc(100vw - 44px));
+    max-height: min(96dvh, 1360px);
+    padding: 14px;
+  }
+
+  .score-table-panel-head {
+    margin-bottom: 10px;
+  }
+
+  .score-table-panel-head h2 {
+    font-size: 1.08rem;
+  }
+
+  .score-table-close-button {
+    padding: 6px 12px;
+    font-size: 0.78rem;
+  }
+
+  .score-table {
+    padding: 14px 16px;
+    max-height: calc(min(96dvh, 1360px) - 74px);
+  }
+
+  .score-table table {
+    font-size: 0.92rem;
+  }
+
+  .score-table th,
+  .score-table td {
+    padding: 8px 10px;
+  }
+
+  .score-table th {
+    font-size: 0.8rem;
+  }
+
+  .score-table.month-horizontal .score-table-header-player,
+  .score-table.month-horizontal .score-table-player {
+    min-width: 90px;
+  }
+
+  .score-table td.score-table-total {
+    font-size: 0.94rem;
+  }
 }
 
 .rule-help-fab {

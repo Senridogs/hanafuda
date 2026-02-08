@@ -724,6 +724,7 @@ function ScoreTable(props: {
   player2TotalScore: number
   currentRound: number
   maxRounds: number
+  isMobileView: boolean
 }) {
   const {
     roundScoreHistory,
@@ -733,6 +734,7 @@ function ScoreTable(props: {
     player2TotalScore,
     currentRound,
     maxRounds,
+    isMobileView,
   } = props
 
   // 全ラウンド（完了分 + 未完了分）を表示
@@ -748,40 +750,99 @@ function ScoreTable(props: {
     }
   })
 
+  if (isMobileView) {
+    return (
+      <div className="score-table month-vertical">
+        <table>
+          <thead>
+            <tr>
+              <th className="score-table-header-month">月</th>
+              <th>{player1Name}</th>
+              <th>{player2Name}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {allRounds.map((row) => (
+              <tr key={row.round} className={row.isCurrent ? 'current-round' : ''}>
+                <th scope="row" className="score-table-month">{row.round}月</th>
+                <td className={row.player1Points !== null && row.player1Points > 0 ? 'won' : ''}>
+                  {row.player1Points !== null ? `${row.player1Points}点` : '-'}
+                </td>
+                <td className={row.player2Points !== null && row.player2Points > 0 ? 'won' : ''}>
+                  {row.player2Points !== null ? `${row.player2Points}点` : '-'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row">合計</th>
+              <td className={`score-table-total ${player1TotalScore > player2TotalScore ? 'leading' : ''}`}>
+                {player1TotalScore}点
+              </td>
+              <td className={`score-table-total ${player2TotalScore > player1TotalScore ? 'leading' : ''}`}>
+                {player2TotalScore}点
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    )
+  }
+
   return (
-    <div className="score-table">
+    <div className="score-table month-horizontal">
       <table>
         <thead>
           <tr>
-            <th className="score-table-header-month">月</th>
-            <th>{player1Name}</th>
-            <th>{player2Name}</th>
+            <th className="score-table-header-player">対戦者</th>
+            {allRounds.map((column) => (
+              <th
+                key={`month-head-${column.round}`}
+                className={`score-table-month ${column.isCurrent ? 'current-round' : ''}`}
+              >
+                {column.round}月
+              </th>
+            ))}
+            <th className="score-table-header-total">合計</th>
           </tr>
         </thead>
         <tbody>
-          {allRounds.map((row) => (
-            <tr key={row.round} className={row.isCurrent ? 'current-round' : ''}>
-              <td className="score-table-month">{row.round}月</td>
-              <td className={row.player1Points !== null && row.player1Points > 0 ? 'won' : ''}>
-                {row.player1Points !== null ? `${row.player1Points}点` : '-'}
+          <tr>
+            <th scope="row" className="score-table-player">{player1Name}</th>
+            {allRounds.map((column) => (
+              <td
+                key={`player1-round-${column.round}`}
+                className={[
+                  column.player1Points !== null && column.player1Points > 0 ? 'won' : '',
+                  column.isCurrent ? 'current-round' : '',
+                ].filter(Boolean).join(' ')}
+              >
+                {column.player1Points !== null ? `${column.player1Points}点` : '-'}
               </td>
-              <td className={row.player2Points !== null && row.player2Points > 0 ? 'won' : ''}>
-                {row.player2Points !== null ? `${row.player2Points}点` : '-'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="score-table-total">
-            <td>合計</td>
-            <td className={player1TotalScore > player2TotalScore ? 'leading' : ''}>
+            ))}
+            <td className={`score-table-total ${player1TotalScore > player2TotalScore ? 'leading' : ''}`}>
               {player1TotalScore}点
             </td>
-            <td className={player2TotalScore > player1TotalScore ? 'leading' : ''}>
+          </tr>
+          <tr>
+            <th scope="row" className="score-table-player">{player2Name}</th>
+            {allRounds.map((column) => (
+              <td
+                key={`player2-round-${column.round}`}
+                className={[
+                  column.player2Points !== null && column.player2Points > 0 ? 'won' : '',
+                  column.isCurrent ? 'current-round' : '',
+                ].filter(Boolean).join(' ')}
+              >
+                {column.player2Points !== null ? `${column.player2Points}点` : '-'}
+              </td>
+            ))}
+            <td className={`score-table-total ${player2TotalScore > player1TotalScore ? 'leading' : ''}`}>
               {player2TotalScore}点
             </td>
           </tr>
-        </tfoot>
+        </tbody>
       </table>
     </div>
   )
@@ -2957,7 +3018,11 @@ function App() {
     if (isChromeCollapsed) {
       return
     }
-    if (target.closest('.app-chrome-panel') || target.closest('.header-settings-toggle-button')) {
+    if (
+      target.closest('.app-chrome-panel') ||
+      target.closest('.header-settings-toggle-button') ||
+      target.closest('.score-table-overlay')
+    ) {
       return
     }
     setIsChromeCollapsed(true)
@@ -3623,22 +3688,25 @@ function App() {
       )}
 
       {isScoreTableVisible ? (
-        <section className="score-table-panel" aria-label="点数表パネル">
-          <div className="score-table-panel-head">
-            <h2>点数表</h2>
-            <button type="button" className="score-table-close-button" onClick={() => setIsScoreTableVisible(false)}>
-              閉じる
-            </button>
-          </div>
-          <ScoreTable
-            roundScoreHistory={game.roundScoreHistory}
-            player1Name={humanDisplayName}
-            player2Name={opponentDisplayName}
-            player1TotalScore={humanPlayer.score}
+        <section className="score-table-overlay" role="presentation" onClick={() => setIsScoreTableVisible(false)}>
+          <section className="score-table-panel" aria-label="点数表パネル" onClick={(event) => event.stopPropagation()}>
+            <div className="score-table-panel-head">
+              <h2>点数表</h2>
+              <button type="button" className="score-table-close-button" onClick={() => setIsScoreTableVisible(false)}>
+                閉じる
+              </button>
+            </div>
+            <ScoreTable
+              roundScoreHistory={game.roundScoreHistory}
+              player1Name={humanDisplayName}
+              player2Name={opponentDisplayName}
+              player1TotalScore={humanPlayer.score}
             player2TotalScore={aiPlayer.score}
             currentRound={game.round}
             maxRounds={game.config.maxRounds}
+            isMobileView={useMobileViewLayout}
           />
+          </section>
         </section>
       ) : null}
 
