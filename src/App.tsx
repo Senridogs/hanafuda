@@ -11,7 +11,12 @@ import {
   type PointerEvent,
   type ReactNode,
 } from 'react'
-import { loadSessionMeta } from './net/persistence'
+import {
+  clearCpuCheckpoint,
+  loadCpuCheckpoint,
+  loadSessionMeta,
+  saveCpuCheckpoint,
+} from './net/persistence'
 import './App.css'
 import { chooseAiHandCard, chooseAiKoiKoi, chooseAiMatch } from './engine/ai'
 import { getCardImageUrl } from './engine/cardArt'
@@ -1403,6 +1408,7 @@ function DeckZone(props: {
 
 function App() {
   const [game, setGame] = useState<KoiKoiGameState>(() => createNewGame())
+  const [isBootstrapRestored, setIsBootstrapRestored] = useState(false)
   const [remoteQueueVersion, setRemoteQueueVersion] = useState(0)
   const remoteCommandQueueRef = useRef<TurnCommand[]>([])
   const queueRemoteCommand = useCallback((command: TurnCommand): void => {
@@ -1413,17 +1419,24 @@ function App() {
   useEffect(() => {
     try {
       const meta = loadSessionMeta()
-      if (!meta) return
-      if (meta.mode === 'p2p-host' && meta.roomId) {
+      if (meta?.mode === 'p2p-host' && meta.roomId) {
+        clearCpuCheckpoint()
         multiplayer.startHost(game, meta.roomId, true)
-        return
-      }
-      if (meta.mode === 'p2p-guest' && meta.roomId) {
+      } else if (meta?.mode === 'p2p-guest' && meta.roomId) {
+        clearCpuCheckpoint()
         multiplayer.setJoinRoomId(meta.roomId)
         multiplayer.joinAsGuest(game)
+      } else {
+        const cpuCheckpoint = loadCpuCheckpoint()
+        if (cpuCheckpoint?.isMatchSurfaceVisible) {
+          setGame(cpuCheckpoint.state)
+          setIsMatchSurfaceVisible(true)
+        }
       }
     } catch {
       // ignore
+    } finally {
+      setIsBootstrapRestored(true)
     }
     // only run on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1454,6 +1467,7 @@ function App() {
   }))
   const appContainerRef = useRef<HTMLDivElement>(null)
   const [isMatchSurfaceVisible, setIsMatchSurfaceVisible] = useState(false)
+  const [isFinalResultVisible, setIsFinalResultVisible] = useState(false)
   const [selectedRoundCount, setSelectedRoundCount] = useState<(typeof ROUND_COUNT_OPTIONS)[number] | null>(null)
   const [pendingHandPlaceholder, setPendingHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
   const [pendingAiHandPlaceholder, setPendingAiHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
@@ -1531,6 +1545,14 @@ function App() {
   const interactionLocked = moveEffects.length > 0 || koikoiEffectActive
   const humanDisplayName = multiplayer.mode === 'cpu' ? humanPlayer.name : 'あなた'
   const opponentDisplayName = multiplayer.mode === 'cpu' ? aiPlayer.name : '相手'
+  const player1ScoreTableName = multiplayer.mode === 'cpu'
+    ? game.players[0].name
+    : game.players[0].id === humanPlayer.id ? 'あなた' : '相手'
+  const player2ScoreTableName = multiplayer.mode === 'cpu'
+    ? game.players[1].name
+    : game.players[1].id === humanPlayer.id ? 'あなた' : '相手'
+  const player1ScoreTableTotal = game.players[0].score
+  const player2ScoreTableTotal = game.players[1].score
   // Use PC layout only when in fullscreen AND landscape orientation
   // Portrait fullscreen keeps mobile layout
   const useMobileViewLayout = isMobileLayout && !(isLandscapeFullscreen && isLandscapeOrientation)
@@ -1707,6 +1729,25 @@ function App() {
     }
     setSelectedRoundCount((current) => (current === nextRoundCount ? current : nextRoundCount))
   }, [game.config.maxRounds, isMatchSurfaceVisible, multiplayer.mode])
+
+  useEffect(() => {
+    if (!isBootstrapRestored) {
+      return
+    }
+    if (multiplayer.mode !== 'cpu' || !isMatchSurfaceVisible || game.phase === 'gameOver') {
+      clearCpuCheckpoint()
+      return
+    }
+    saveCpuCheckpoint({
+      state: game,
+      updatedAt: Date.now(),
+      isMatchSurfaceVisible: true,
+    })
+  }, [game, isBootstrapRestored, isMatchSurfaceVisible, multiplayer.mode])
+
+  useEffect(() => {
+    setIsFinalResultVisible(false)
+  }, [game.phase])
 
   // Fullscreen change event listener to sync state when user exits fullscreen via ESC/back button
   useEffect(() => {
@@ -3261,6 +3302,7 @@ function App() {
     if (selectedRoundCount === null) {
       return
     }
+    clearCpuCheckpoint()
     setIsMatchSurfaceVisible(true)
     setIsChromeCollapsed(true)
     resetTransientUiState()
@@ -3288,6 +3330,7 @@ function App() {
     if (selectedRoundCount === null) {
       return
     }
+    clearCpuCheckpoint()
     setIsMatchSurfaceVisible(false)
     setIsChromeCollapsed(false)  // 部屋作成時はヘッダーを隠さない
     resetTransientUiState()
@@ -3303,6 +3346,7 @@ function App() {
   }, [game.config, multiplayer, resetTransientUiState, selectedRoundCount])
 
   const handleJoinGuest = useCallback((): void => {
+    clearCpuCheckpoint()
     setIsMatchSurfaceVisible(false)
     setIsChromeCollapsed(isMobileLayout)
     resetTransientUiState()
@@ -3317,6 +3361,7 @@ function App() {
   }, [game.config, isMobileLayout, multiplayer, resetTransientUiState])
 
   const handleLeaveMultiplayer = useCallback((): void => {
+    clearCpuCheckpoint()
     setIsMatchSurfaceVisible(false)
     setIsChromeCollapsed(isMobileLayout)
     setSelectedRoundCount(null)
@@ -3390,8 +3435,18 @@ function App() {
     multiplayer.connectionStatus,
     multiplayer.mode,
   ])
-  const roundEndPrimaryActionLabel = '次の月へ'
-  const roundEndPrimaryActionDisabled = multiplayer.mode !== 'cpu' && multiplayer.connectionStatus !== 'connected'
+  const showingLastRoundSummary = game.phase === 'roundEnd' || (game.phase === 'gameOver' && !isFinalResultVisible)
+  const roundEndPrimaryActionLabel = game.phase === 'gameOver' ? '最終結果へ' : '次の月へ'
+  const roundEndPrimaryActionDisabled = game.phase === 'roundEnd'
+    ? multiplayer.mode !== 'cpu' && multiplayer.connectionStatus !== 'connected'
+    : false
+  const handleRoundEndPrimaryAction = useCallback((): void => {
+    if (game.phase === 'gameOver') {
+      setIsFinalResultVisible(true)
+      return
+    }
+    handleRequestNextRound()
+  }, [game.phase, handleRequestNextRound])
   const roundEndMessageLines = roundPointBreakdownLines
 
 
@@ -3904,14 +3959,14 @@ function App() {
             </div>
             <ScoreTable
               roundScoreHistory={game.roundScoreHistory}
-              player1Name={humanDisplayName}
-              player2Name={opponentDisplayName}
-              player1TotalScore={humanPlayer.score}
-            player2TotalScore={aiPlayer.score}
-            currentRound={game.round}
-            maxRounds={game.config.maxRounds}
-            isMobileView={useMobileViewLayout}
-          />
+              player1Name={player1ScoreTableName}
+              player2Name={player2ScoreTableName}
+              player1TotalScore={player1ScoreTableTotal}
+              player2TotalScore={player2ScoreTableTotal}
+              currentRound={game.round}
+              maxRounds={game.config.maxRounds}
+              isMobileView={useMobileViewLayout}
+            />
           </section>
         </section>
       ) : null}
@@ -4110,7 +4165,7 @@ function App() {
         />
       ) : null}
 
-      {game.phase === 'roundEnd' && !stopEffectActive ? (
+      {showingLastRoundSummary && !stopEffectActive ? (
         <RoundOverlay
           title="月が終了しました"
           message={
@@ -4120,12 +4175,12 @@ function App() {
           }
           messageLines={roundEndMessageLines}
           primaryActionLabel={roundEndPrimaryActionLabel}
-          onPrimaryAction={handleRequestNextRound}
+          onPrimaryAction={handleRoundEndPrimaryAction}
           primaryDisabled={roundEndPrimaryActionDisabled}
         />
       ) : null}
 
-      {game.phase === 'gameOver' && !stopEffectActive ? (
+      {game.phase === 'gameOver' && !stopEffectActive && isFinalResultVisible ? (
         <RoundOverlay
           title="対局終了"
           message={
@@ -4136,10 +4191,10 @@ function App() {
           details={
             <ScoreTable
               roundScoreHistory={game.roundScoreHistory}
-              player1Name={humanDisplayName}
-              player2Name={opponentDisplayName}
-              player1TotalScore={humanPlayer.score}
-              player2TotalScore={aiPlayer.score}
+              player1Name={player1ScoreTableName}
+              player2Name={player2ScoreTableName}
+              player1TotalScore={player1ScoreTableTotal}
+              player2TotalScore={player2ScoreTableTotal}
               currentRound={game.round}
               maxRounds={game.round}
               isMobileView={useMobileViewLayout}

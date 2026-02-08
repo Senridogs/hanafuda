@@ -2,18 +2,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createNewGame } from '../../src/engine/game'
 import {
   CHECKPOINT_TTL_MS,
+  CPU_CHECKPOINT_TTL_MS,
+  clearCpuCheckpoint,
   clearCheckpoint,
+  loadCpuCheckpoint,
   loadLastGuestRoomId,
   loadLastHostRoomId,
   loadCheckpoint,
+  saveCpuCheckpoint,
   saveCheckpoint,
   saveLastGuestRoomId,
   saveLastHostRoomId,
+  type CpuCheckpointPayload,
   type CheckpointPayload,
 } from '../../src/net/persistence'
 
 const ROOM_ID = 'room-001'
 const HOST_STORAGE_KEY = `hanafuda:p2p:checkpoint:host:${ROOM_ID}`
+const CPU_STORAGE_KEY = 'hanafuda:cpu:checkpoint'
 
 function createPayload(overrides: Partial<CheckpointPayload> = {}): CheckpointPayload {
   return {
@@ -21,6 +27,15 @@ function createPayload(overrides: Partial<CheckpointPayload> = {}): CheckpointPa
     state: createNewGame(),
     updatedAt: Date.now(),
     role: 'host',
+    ...overrides,
+  }
+}
+
+function createCpuPayload(overrides: Partial<CpuCheckpointPayload> = {}): CpuCheckpointPayload {
+  return {
+    state: createNewGame(),
+    updatedAt: Date.now(),
+    isMatchSurfaceVisible: true,
     ...overrides,
   }
 }
@@ -112,5 +127,45 @@ describe('last guest room id persistence', () => {
 
     saveLastGuestRoomId('  ROOM-GUEST002  ')
     expect(loadLastGuestRoomId()).toBe('ROOM-GUEST002')
+  })
+})
+
+describe('cpu checkpoint persistence', () => {
+  it('supports save/load roundtrip', () => {
+    const payload = createCpuPayload()
+
+    saveCpuCheckpoint(payload)
+    const loaded = loadCpuCheckpoint()
+
+    expect(loaded).toEqual(payload)
+  })
+
+  it('clears stored cpu checkpoint', () => {
+    saveCpuCheckpoint(createCpuPayload())
+    clearCpuCheckpoint()
+
+    expect(loadCpuCheckpoint()).toBeNull()
+  })
+
+  it('ignores malformed payload safely', () => {
+    localStorage.setItem(CPU_STORAGE_KEY, JSON.stringify({
+      state: createNewGame(),
+      updatedAt: Date.now(),
+      isMatchSurfaceVisible: 'yes',
+    }))
+
+    expect(loadCpuCheckpoint()).toBeNull()
+  })
+
+  it('invalidates cpu checkpoint past ttl', () => {
+    vi.useFakeTimers()
+    const now = new Date('2026-02-07T10:00:00.000Z')
+    vi.setSystemTime(now)
+
+    saveCpuCheckpoint(createCpuPayload({
+      updatedAt: now.getTime() - CPU_CHECKPOINT_TTL_MS - 1,
+    }))
+
+    expect(loadCpuCheckpoint()).toBeNull()
   })
 })

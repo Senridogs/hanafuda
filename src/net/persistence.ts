@@ -11,6 +11,14 @@ export interface CheckpointPayload {
 
 export const CHECKPOINT_KEY_PREFIX = 'hanafuda:p2p:checkpoint'
 export const CHECKPOINT_TTL_MS = 24 * 60 * 60 * 1000
+const CPU_CHECKPOINT_KEY = 'hanafuda:cpu:checkpoint'
+export const CPU_CHECKPOINT_TTL_MS = CHECKPOINT_TTL_MS
+
+export interface CpuCheckpointPayload {
+  readonly state: KoiKoiGameState
+  readonly updatedAt: number
+  readonly isMatchSurfaceVisible: boolean
+}
 
 function getCheckpointKey(roomId: string, role?: CheckpointRole): string {
   if (role) {
@@ -70,6 +78,29 @@ function parseCheckpointPayload(value: unknown): CheckpointPayload | null {
     state: state as KoiKoiGameState,
     updatedAt,
     role,
+  }
+}
+
+function parseCpuCheckpointPayload(value: unknown): CpuCheckpointPayload | null {
+  if (!isRecord(value)) {
+    return null
+  }
+
+  const { state, updatedAt, isMatchSurfaceVisible } = value
+  if (state === undefined) {
+    return null
+  }
+  if (!isValidUpdatedAt(updatedAt)) {
+    return null
+  }
+  if (typeof isMatchSurfaceVisible !== 'boolean') {
+    return null
+  }
+
+  return {
+    state: state as KoiKoiGameState,
+    updatedAt,
+    isMatchSurfaceVisible,
   }
 }
 
@@ -136,6 +167,62 @@ export function clearCheckpoint(roomId: string, role?: CheckpointRole): void {
     storage.removeItem(getCheckpointKey(roomId, role))
   } catch {
     // Ignore unavailable storage errors.
+  }
+}
+
+export function saveCpuCheckpoint(payload: CpuCheckpointPayload): void {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return
+  }
+  if (
+    payload.state === undefined
+    || !isValidUpdatedAt(payload.updatedAt)
+    || typeof payload.isMatchSurfaceVisible !== 'boolean'
+  ) {
+    return
+  }
+  try {
+    storage.setItem(CPU_CHECKPOINT_KEY, JSON.stringify(payload))
+  } catch {
+    // ignore quota / unavailable
+  }
+}
+
+export function loadCpuCheckpoint(): CpuCheckpointPayload | null {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return null
+  }
+  const raw = storage.getItem(CPU_CHECKPOINT_KEY)
+  if (raw === null) {
+    return null
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  const checkpoint = parseCpuCheckpointPayload(parsed)
+  if (!checkpoint) {
+    return null
+  }
+  if (Date.now() - checkpoint.updatedAt > CPU_CHECKPOINT_TTL_MS) {
+    return null
+  }
+  return checkpoint
+}
+
+export function clearCpuCheckpoint(): void {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return
+  }
+  try {
+    storage.removeItem(CPU_CHECKPOINT_KEY)
+  } catch {
+    // ignore unavailable storage
   }
 }
 
