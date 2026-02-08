@@ -13,7 +13,7 @@ import {
 } from '../../src/net/persistence'
 
 const ROOM_ID = 'room-001'
-const STORAGE_KEY = `hanafuda:p2p:checkpoint:${ROOM_ID}`
+const HOST_STORAGE_KEY = `hanafuda:p2p:checkpoint:host:${ROOM_ID}`
 
 function createPayload(overrides: Partial<CheckpointPayload> = {}): CheckpointPayload {
   return {
@@ -35,22 +35,22 @@ describe('checkpoint persistence', () => {
     const payload = createPayload()
 
     saveCheckpoint(ROOM_ID, payload)
-    const loaded = loadCheckpoint(ROOM_ID)
+    const loaded = loadCheckpoint(ROOM_ID, 'host')
 
     expect(loaded).toEqual(payload)
   })
 
   it('clears stored checkpoint', () => {
     saveCheckpoint(ROOM_ID, createPayload())
-    clearCheckpoint(ROOM_ID)
+    clearCheckpoint(ROOM_ID, 'host')
 
-    expect(loadCheckpoint(ROOM_ID)).toBeNull()
+    expect(loadCheckpoint(ROOM_ID, 'host')).toBeNull()
   })
 
   it('ignores broken JSON safely', () => {
-    localStorage.setItem(STORAGE_KEY, '{broken-json')
+    localStorage.setItem(HOST_STORAGE_KEY, '{broken-json')
 
-    const run = () => loadCheckpoint(ROOM_ID)
+    const run = () => loadCheckpoint(ROOM_ID, 'host')
     expect(run).not.toThrow()
     expect(run()).toBeNull()
   })
@@ -67,7 +67,7 @@ describe('checkpoint persistence', () => {
       }),
     )
 
-    expect(loadCheckpoint(ROOM_ID)).toBeNull()
+    expect(loadCheckpoint(ROOM_ID, 'host')).toBeNull()
   })
 
   it('guards non-negative integer version', () => {
@@ -78,8 +78,8 @@ describe('checkpoint persistence', () => {
       }),
     )
 
-    expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
-    expect(loadCheckpoint(ROOM_ID)).toBeNull()
+    expect(localStorage.getItem(HOST_STORAGE_KEY)).toBeNull()
+    expect(loadCheckpoint(ROOM_ID, 'host')).toBeNull()
   })
 })
 

@@ -12,7 +12,10 @@ export interface CheckpointPayload {
 export const CHECKPOINT_KEY_PREFIX = 'hanafuda:p2p:checkpoint'
 export const CHECKPOINT_TTL_MS = 24 * 60 * 60 * 1000
 
-function getCheckpointKey(roomId: string): string {
+function getCheckpointKey(roomId: string, role?: CheckpointRole): string {
+  if (role) {
+    return `${CHECKPOINT_KEY_PREFIX}:${role}:${roomId}`
+  }
   return `${CHECKPOINT_KEY_PREFIX}:${roomId}`
 }
 
@@ -86,19 +89,19 @@ export function saveCheckpoint(roomId: string, payload: CheckpointPayload): void
   }
 
   try {
-    storage.setItem(getCheckpointKey(roomId), JSON.stringify(payload))
+    storage.setItem(getCheckpointKey(roomId, payload.role), JSON.stringify(payload))
   } catch {
     // Ignore unavailable storage / quota errors.
   }
 }
 
-export function loadCheckpoint(roomId: string): CheckpointPayload | null {
+export function loadCheckpoint(roomId: string, role?: CheckpointRole): CheckpointPayload | null {
   const storage = getLocalStorage()
   if (!storage || roomId.length === 0) {
     return null
   }
 
-  const key = getCheckpointKey(roomId)
+  const key = getCheckpointKey(roomId, role)
   const raw = storage.getItem(key)
   if (raw === null) {
     return null
@@ -123,14 +126,14 @@ export function loadCheckpoint(roomId: string): CheckpointPayload | null {
   return checkpoint
 }
 
-export function clearCheckpoint(roomId: string): void {
+export function clearCheckpoint(roomId: string, role?: CheckpointRole): void {
   const storage = getLocalStorage()
   if (!storage || roomId.length === 0) {
     return
   }
 
   try {
-    storage.removeItem(getCheckpointKey(roomId))
+    storage.removeItem(getCheckpointKey(roomId, role))
   } catch {
     // Ignore unavailable storage errors.
   }
@@ -148,8 +151,19 @@ const SESSION_KEY = 'hanafuda:p2p:session'
 const LAST_HOST_ROOM_ID_KEY = 'hanafuda:p2p:last-host-room-id'
 const LAST_GUEST_ROOM_ID_KEY = 'hanafuda:p2p:last-guest-room-id'
 
+function getSessionStorage(): Storage | null {
+  try {
+    if (typeof globalThis === 'undefined' || !('sessionStorage' in globalThis)) {
+      return null
+    }
+    return globalThis.sessionStorage
+  } catch {
+    return null
+  }
+}
+
 export function saveSessionMeta(meta: SessionMeta): void {
-  const storage = getLocalStorage()
+  const storage = getSessionStorage()
   if (!storage) return
   try {
     storage.setItem(SESSION_KEY, JSON.stringify(meta))
@@ -159,7 +173,7 @@ export function saveSessionMeta(meta: SessionMeta): void {
 }
 
 export function loadSessionMeta(): SessionMeta | null {
-  const storage = getLocalStorage()
+  const storage = getSessionStorage()
   if (!storage) return null
   const raw = storage.getItem(SESSION_KEY)
   if (raw === null) return null
@@ -177,7 +191,7 @@ export function loadSessionMeta(): SessionMeta | null {
 }
 
 export function clearSessionMeta(): void {
-  const storage = getLocalStorage()
+  const storage = getSessionStorage()
   if (!storage) return
   try {
     storage.removeItem(SESSION_KEY)

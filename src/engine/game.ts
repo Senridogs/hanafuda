@@ -650,7 +650,8 @@ function getStopRoundPoints(state: KoiKoiGameState, playerIndex: 0 | 1): number 
 
 export function createNewGame(config: GameConfig = DEFAULT_CONFIG, seed?: number): KoiKoiGameState {
   const random = seed === undefined ? Math.random : createSeededRandom(seed)
-  return dealRound([createPlayer('player1', config.player1Name), createPlayer('player2', config.player2Name)], config, 1, 0, [], random)
+  const starterIndex: 0 | 1 = random() < 0.5 ? 0 : 1
+  return dealRound([createPlayer('player1', config.player1Name), createPlayer('player2', config.player2Name)], config, 1, starterIndex, [], random)
 }
 
 export function getMatchingFieldCards(

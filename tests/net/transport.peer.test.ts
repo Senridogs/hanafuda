@@ -116,7 +116,7 @@ class FakePeer implements PeerLike {
     this.emit('close')
   }
 
-  private emit(event: PeerEvent, ...args: unknown[]): void {
+  emit(event: PeerEvent, ...args: unknown[]): void {
     for (const handler of this.handlers[event]) {
       handler(...args)
     }
@@ -214,6 +214,68 @@ describe('peer transport', () => {
 
     guest2.close()
     guest1.close()
+    host.close()
+  })
+
+  it('resetConnection closes data connection but keeps peer alive for new guests', async () => {
+    const host = createHostTransport({
+      roomId: 'room-03',
+      peerFactory: fakePeerFactory,
+    })
+    const guest1 = createGuestTransport({
+      roomId: 'room-03',
+      peerFactory: fakePeerFactory,
+    })
+
+    await flushMicrotasks()
+    expect(host.getStatus()).toBe('connected')
+    expect(guest1.getStatus()).toBe('connected')
+
+    const statuses: string[] = []
+    host.onStatusChange((s) => statuses.push(s))
+
+    host.resetConnection()
+    expect(host.getStatus()).toBe('disconnected')
+    expect(statuses).toContain('disconnected')
+
+    // Peer is still alive, so a new guest can connect
+    const hostPeer = FakePeer.peers.get('room-03')
+    expect(hostPeer).toBeDefined()
+
+    const guest2 = createGuestTransport({
+      roomId: 'room-03',
+      peerFactory: fakePeerFactory,
+    })
+    await flushMicrotasks()
+    expect(host.getStatus()).toBe('connected')
+    expect(guest2.getStatus()).toBe('connected')
+
+    guest2.close()
+    host.close()
+  })
+
+  it('peer disconnected event triggers status change even with open connection', async () => {
+    const host = createHostTransport({
+      roomId: 'room-04',
+      peerFactory: fakePeerFactory,
+    })
+    const guest = createGuestTransport({
+      roomId: 'room-04',
+      peerFactory: fakePeerFactory,
+    })
+
+    await flushMicrotasks()
+    expect(host.getStatus()).toBe('connected')
+
+    const hostPeer = FakePeer.peers.get('room-04')
+    expect(hostPeer).toBeDefined()
+
+    // Simulate signaling server disconnect while data connection is "open"
+    hostPeer!.emit('disconnected', hostPeer!.id)
+
+    expect(host.getStatus()).toBe('disconnected')
+
+    guest.close()
     host.close()
   })
 })

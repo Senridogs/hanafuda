@@ -36,6 +36,8 @@ export interface PeerTransport {
   onStatusChange(handler: StatusHandler): () => void
   onError(handler: ErrorHandler): () => void
   send(message: NetMessage): boolean
+  /** Close only the data connection, keeping the PeerJS peer alive for new connections. */
+  resetConnection(): void
   close(): void
   getStatus(): TransportStatus
 }
@@ -239,25 +241,22 @@ function createTransportCore(
   peer.on('error', (error) => {
     emitError(`Peerエラー: ${toErrorText(error)}`)
     clearGuestConnectTimeout()
-    if (currentConnection?.open) {
-      return
-    }
+    closeConnection(currentConnection)
+    currentConnection = null
     setStatus('error')
   })
 
   peer.on('disconnected', () => {
     clearGuestConnectTimeout()
-    if (currentConnection?.open) {
-      return
-    }
+    closeConnection(currentConnection)
+    currentConnection = null
     setStatus('disconnected')
   })
 
   peer.on('close', () => {
     clearGuestConnectTimeout()
-    if (currentConnection?.open) {
-      return
-    }
+    closeConnection(currentConnection)
+    currentConnection = null
     setStatus('disconnected')
   })
 
@@ -279,6 +278,15 @@ function createTransportCore(
       return () => {
         errorHandlers.delete(handler)
       }
+    },
+    resetConnection() {
+      if (closed) {
+        return
+      }
+      clearGuestConnectTimeout()
+      closeConnection(currentConnection)
+      currentConnection = null
+      setStatus('disconnected')
     },
     send(message) {
       if (!currentConnection || !currentConnection.open || closed) {

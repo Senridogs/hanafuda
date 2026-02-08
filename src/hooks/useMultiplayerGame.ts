@@ -34,10 +34,11 @@ interface NetworkSession {
 
 const DEFAULT_CONNECTION_STATUS: ConnectionStatus = 'disconnected'
 const MAX_RECENT_ACTION_IDS = 256
-const HOST_AUTO_RECOVERY_DELAY_MS = 200
+const HOST_ERROR_RECOVERY_DELAY_MS = 1500
+const HOST_FULL_RECOVERY_DELAY_MS = 30000
 const GUEST_AUTO_RECOVERY_DELAY_MS = 1200
-const HEARTBEAT_INTERVAL_MS = 4000
-const HEARTBEAT_TIMEOUT_MS = 12000
+const HEARTBEAT_INTERVAL_MS = 2000
+const HEARTBEAT_TIMEOUT_MS = 6000
 
 function generateRoomId(): string {
   const random = Math.random().toString(36).slice(2, 8).toUpperCase()
@@ -196,6 +197,13 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     setConnectionStatus('error')
   }, [appendConnectionLog, shutdownNetwork])
 
+  const softDisconnect = useCallback((reason: string): void => {
+    appendConnectionLog(reason)
+    clearHeartbeatTimer()
+    networkSessionRef.current?.transport.resetConnection()
+    setConnectionStatus('disconnected')
+  }, [appendConnectionLog, clearHeartbeatTimer])
+
   const teardownToCpu = useCallback(() => {
     shutdownNetwork()
     setMode('cpu')
@@ -238,6 +246,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
       return
     }
     lastInboundAtRef.current = Date.now()
+    const currentMode = mode
     heartbeatTimerRef.current = setInterval(() => {
       const network = networkSessionRef.current
       if (!network) {
@@ -245,17 +254,27 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
       }
       const now = Date.now()
       if (now - lastInboundAtRef.current > HEARTBEAT_TIMEOUT_MS) {
-        forceConnectionError(`接続監視: 応答なし (${Math.round(HEARTBEAT_TIMEOUT_MS / 1000)}秒)`)
+        const reason = `接続監視: 応答なし (${Math.round(HEARTBEAT_TIMEOUT_MS / 1000)}秒)`
+        if (currentMode === 'p2p-host') {
+          softDisconnect(reason)
+        } else {
+          forceConnectionError(reason)
+        }
         return
       }
       const sent = network.transport.send({ type: 'ping', t: now })
       if (!sent) {
-        forceConnectionError('接続監視: ping送信失敗')
+        const reason = '接続監視: ping送信失敗'
+        if (currentMode === 'p2p-host') {
+          softDisconnect(reason)
+        } else {
+          forceConnectionError(reason)
+        }
       }
     }, HEARTBEAT_INTERVAL_MS)
 
     return clearHeartbeatTimer
-  }, [clearHeartbeatTimer, connectionStatus, forceConnectionError, mode])
+  }, [clearHeartbeatTimer, connectionStatus, forceConnectionError, mode, softDisconnect])
 
   const applyRestartGame = useCallback((maxRounds: 3 | 6 | 12, seed?: number): void => {
     const nextState = createNewGame({
@@ -272,9 +291,9 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     restoreFromCheckpoint = true,
   ) => {
     const nextRoomId = fixedRoomId?.trim() || hostRoomId.trim() || generateRoomId()
-    const restored = restoreFromCheckpoint ? loadCheckpoint(nextRoomId) : null
-    const restoredState = restored && restored.role === 'host' ? restored.state : initialState
-    const restoredVersion = restored && restored.role === 'host' ? restored.version : 0
+    const restored = restoreFromCheckpoint ? loadCheckpoint(nextRoomId, 'host') : null
+    const restoredState = restored ? restored.state : initialState
+    const restoredVersion = restored ? restored.version : 0
 
     shutdownNetwork()
     gameRef.current = restoredState
@@ -364,9 +383,9 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
       return false
     }
 
-    const restored = loadCheckpoint(targetRoomId)
-    const restoredState = restored && restored.role === 'guest' ? restored.state : initialState
-    const restoredVersion = restored && restored.role === 'guest' ? restored.version : 0
+    const restored = loadCheckpoint(targetRoomId, 'guest')
+    const restoredState = restored ? restored.state : initialState
+    const restoredVersion = restored ? restored.version : 0
 
     shutdownNetwork()
     gameRef.current = restoredState
@@ -515,8 +534,9 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
 
   const leaveMultiplayer = useCallback(() => {
     const currentRoomId = roomIdRef.current
+    const currentRole = modeRef.current === 'p2p-host' ? 'host' : 'guest'
     if (currentRoomId.length > 0) {
-      clearCheckpoint(currentRoomId)
+      clearCheckpoint(currentRoomId, currentRole as 'host' | 'guest')
     }
     try {
       clearSessionMeta()
@@ -540,11 +560,23 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
       return
     }
 
-    appendConnectionLog(`ホスト待機を復旧します: room=${activeRoomId}`)
-    hostRecoveryTimerRef.current = setTimeout(() => {
-      hostRecoveryTimerRef.current = null
-      startHost(gameRef.current, activeRoomId, false)
-    }, HOST_AUTO_RECOVERY_DELAY_MS)
+    if (connectionStatus === 'error') {
+      // Peer is destroyed (PeerJS error, reload "ID taken", etc.) — rebuild quickly.
+      appendConnectionLog(`ホスト復旧中: room=${activeRoomId}`)
+      hostRecoveryTimerRef.current = setTimeout(() => {
+        hostRecoveryTimerRef.current = null
+        startHost(gameRef.current, activeRoomId, true)
+      }, HOST_ERROR_RECOVERY_DELAY_MS)
+    } else {
+      // softDisconnect keeps the peer alive — guest can reconnect immediately.
+      // Full rebuild only as a 30-second fallback if nothing happens.
+      appendConnectionLog(`ホスト待機中 (peer維持): room=${activeRoomId}`)
+      hostRecoveryTimerRef.current = setTimeout(() => {
+        hostRecoveryTimerRef.current = null
+        appendConnectionLog(`ホスト完全復旧: room=${activeRoomId}`)
+        startHost(gameRef.current, activeRoomId, false)
+      }, HOST_FULL_RECOVERY_DELAY_MS)
+    }
 
     return clearHostRecoveryTimer
   }, [appendConnectionLog, clearHostRecoveryTimer, connectionStatus, mode, startHost])
