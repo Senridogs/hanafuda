@@ -3664,6 +3664,9 @@ function App() {
           ) : null}
 
           <section className={`board-center ${useMobileViewLayout ? 'mobile' : ''}`} aria-label="対局ボード" onClick={handleBoardClick}>
+            <div className="mobile-round-indicator" aria-label="現在の月">
+              {`第 ${game.round} / ${game.config.maxRounds} 月`}
+            </div>
             <div className={`card-rack opponent-rack ${useMobileViewLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === opponentPlayerIndex ? 'active-turn' : ''}`}>
               {displayedAiHand.map((card) => {
                 const isPlaceholder = pendingAiPlaceholderCardId === card.id

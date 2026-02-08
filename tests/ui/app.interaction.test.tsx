@@ -145,6 +145,24 @@ describe('App interaction safeguards', () => {
     expect(cpuButton.disabled).toBe(false)
   })
 
+  it('shows current month indicator at top-left in mobile layout', () => {
+    mockMatchMedia(true)
+    render(<App />)
+
+    startCpuMatch(6)
+
+    expect(screen.getByLabelText('現在の月').textContent).toBe('第 1 / 6 月')
+  })
+
+  it('shows current month indicator at top-left in desktop layout', () => {
+    mockMatchMedia(false)
+    render(<App />)
+
+    startCpuMatch(6)
+
+    expect(screen.getByLabelText('現在の月').textContent).toBe('第 1 / 6 月')
+  })
+
   it('rejects unmatched card click when a matching card exists', () => {
     const pattern = findOpeningPattern()
     vi.useFakeTimers()
