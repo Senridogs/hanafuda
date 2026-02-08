@@ -146,7 +146,7 @@ const PC_YAKU_LIGHT_KEYS = new Set(['goko', 'shiko', 'ame-shiko', 'sanko'])
 const PC_YAKU_TANE_KEYS = new Set(['tane', 'inoshikacho', 'hanami-zake', 'tsukimi-zake'])
 const PC_YAKU_TAN_KEYS = new Set(['tanzaku', 'akatan', 'aotan'])
 const TURN_DECISION_SPARK_INDICES = [0, 1, 2, 3, 4, 5, 6, 7] as const
-const RULE_HELP_SWIPE_THRESHOLD_PX = 54
+const RULE_HELP_SWIPE_THRESHOLD_PX = 38
 const RULE_HELP_CARD_TYPE_LABELS: Readonly<Record<HanafudaCard['type'], string>> = {
   hikari: '光',
   tane: '種',
@@ -1497,9 +1497,10 @@ function App() {
   // Use PC layout only when in fullscreen AND landscape orientation
   // Portrait fullscreen keeps mobile layout
   const useMobileViewLayout = isMobileLayout && !(isLandscapeFullscreen && isLandscapeOrientation)
+  const useMobileRuleHelpPagination = isMobileLayout || isLandscapeFullscreen
   const ruleHelpPages = useMemo<readonly RuleHelpPage[]>(() => {
     const monthRanges: ReadonlyArray<readonly [number, number]> = (() => {
-      if (!isMobileLayout) {
+      if (!useMobileRuleHelpPagination) {
         return [[1, 12]]
       }
       const estimatedPanelHeight = Math.min(ruleHelpViewport.height * 0.9, 780)
@@ -1533,7 +1534,7 @@ function App() {
     }
 
     const yakuPages: RuleHelpPage[] = []
-    if (!isMobileLayout) {
+    if (!useMobileRuleHelpPagination) {
       yakuPages.push({
         key: 'yaku-main',
         title: '役一覧（基本役）',
@@ -1564,7 +1565,7 @@ function App() {
       ...monthPages,
       ...yakuPages,
     ]
-  }, [isMobileLayout, ruleHelpViewport.height, ruleHelpViewport.width])
+  }, [ruleHelpViewport.height, ruleHelpViewport.width, useMobileRuleHelpPagination])
   const currentRuleHelpPage = ruleHelpPages[ruleHelpPageIndex] ?? ruleHelpPages[0]
 
   useEffect(() => {
@@ -1746,6 +1747,17 @@ function App() {
     goToRuleHelpPage(ruleHelpPageIndex + 1)
   }, [goToRuleHelpPage, ruleHelpPageIndex])
   const handleRuleHelpPointerDown = useCallback((event: PointerEvent<HTMLDivElement>): void => {
+    const isSwipePointer = event.pointerType === 'touch' || event.pointerType === 'pen'
+    if (!isSwipePointer) {
+      return
+    }
+    if (event.currentTarget.setPointerCapture) {
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      } catch {
+        // Ignore capture errors in unsupported browsers.
+      }
+    }
     ruleHelpSwipeStartRef.current = {
       pointerId: event.pointerId,
       x: event.clientX,
@@ -1753,6 +1765,17 @@ function App() {
     }
   }, [])
   const handleRuleHelpPointerUp = useCallback((event: PointerEvent<HTMLDivElement>): void => {
+    const isSwipePointer = event.pointerType === 'touch' || event.pointerType === 'pen'
+    if (!isSwipePointer) {
+      return
+    }
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      } catch {
+        // Ignore release errors in unsupported browsers.
+      }
+    }
     const start = ruleHelpSwipeStartRef.current
     ruleHelpSwipeStartRef.current = null
     if (!start || start.pointerId !== event.pointerId) {
@@ -1769,7 +1792,18 @@ function App() {
     }
     goToPreviousRuleHelpPage()
   }, [goToNextRuleHelpPage, goToPreviousRuleHelpPage])
-  const handleRuleHelpPointerCancel = useCallback((): void => {
+  const handleRuleHelpPointerCancel = useCallback((event: PointerEvent<HTMLDivElement>): void => {
+    const isSwipePointer = event.pointerType === 'touch' || event.pointerType === 'pen'
+    if (!isSwipePointer) {
+      return
+    }
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      } catch {
+        // Ignore release errors in unsupported browsers.
+      }
+    }
     ruleHelpSwipeStartRef.current = null
   }, [])
   const isRuleHelpFirstPage = ruleHelpPageIndex <= 0
@@ -3719,6 +3753,9 @@ function App() {
             aria-modal="true"
             aria-label="札と役ガイド"
             onClick={(event) => event.stopPropagation()}
+            onPointerDown={handleRuleHelpPointerDown}
+            onPointerUp={handleRuleHelpPointerUp}
+            onPointerCancel={handleRuleHelpPointerCancel}
           >
             <div className="rule-help-panel-head">
               <div className="rule-help-panel-title">
@@ -3732,12 +3769,7 @@ function App() {
               </button>
             </div>
 
-            <div
-              className="rule-help-carousel"
-              onPointerDown={handleRuleHelpPointerDown}
-              onPointerUp={handleRuleHelpPointerUp}
-              onPointerCancel={handleRuleHelpPointerCancel}
-            >
+            <div className="rule-help-carousel">
               <div
                 className="rule-help-track"
                 style={{ transform: `translateX(-${ruleHelpPageIndex * 100}%)` }}

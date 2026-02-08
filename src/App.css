@@ -2677,6 +2677,8 @@ button:hover {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
 }
 
 .rule-help-panel-head {
@@ -2704,6 +2706,8 @@ button:hover {
   min-height: 0;
   flex: 1 1 auto;
   overflow: hidden;
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
 }
 
 .rule-help-track {
@@ -2732,6 +2736,7 @@ button:hover {
   min-height: 0;
   overflow: auto;
   padding-right: 2px;
+  touch-action: pan-y;
 }
 
 .rule-help-nav {
