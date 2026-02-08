@@ -189,7 +189,7 @@ describe('game rules and safeguards', () => {
     expect(next.winner).toBeNull()
   })
 
-  it('ends game immediately when target score is reached mid-match', () => {
+  it('does not end game mid-match even when score increases significantly', () => {
     const captured = ['jan-hikari', 'mar-hikari', 'aug-hikari']
     const state = makeState({
       phase: 'koikoiDecision',
@@ -199,14 +199,14 @@ describe('game rules and safeguards', () => {
         createPlayer('player2', 8, ['feb-tane']),
       ],
       currentPlayerIndex: 0,
-      config: config({ targetScore: 12 }),
+      config: config({ maxRounds: 12 }),
     })
 
     const next = resolveKoiKoi(state, 'stop')
-    expect(next.phase).toBe('gameOver')
+    expect(next.phase).toBe('roundEnd')
     expect(next.roundWinner).toBe('player1')
     expect(next.players[0].score).toBe(15)
-    expect(next.winner).toBe('player1')
+    expect(next.winner).toBeNull()
   })
 
   it('resolves exhausted final round with winner from accumulated scores', () => {
@@ -353,7 +353,7 @@ describe('game rules and safeguards', () => {
                 currentPlayerIndex,
                 players,
                 koikoiCounts,
-                config: config({ maxRounds: 12, targetScore: 999 }),
+                config: config({ maxRounds: 12 }),
               })
 
               const next = resolveKoiKoi(state, 'stop')
@@ -395,7 +395,7 @@ describe('game rules and safeguards', () => {
               createPlayer('player1', p1Start, ['jan-hikari']),
               createPlayer('player2', p2Start, ['feb-tane']),
             ],
-            config: config({ maxRounds: 12, targetScore: 999 }),
+            config: config({ maxRounds: 12 }),
           })
 
           const next = drawStep(state)

@@ -167,7 +167,6 @@ function runSimulation(seed: number, config: GameConfig, alwaysStop = false): Ko
 describe('full-game simulation invariants', () => {
   it('preserves core invariants across deterministic random full games', () => {
     const cfg: GameConfig = {
-      targetScore: 50,
       maxRounds: 12,
       enableAI: false,
       aiDifficulty: 'medium',
@@ -181,9 +180,8 @@ describe('full-game simulation invariants', () => {
     }
   })
 
-  it('finishes at 12th round by max-round rule when target is unreachable', () => {
+  it('finishes at 12th round by max-round rule', () => {
     const cfg: GameConfig = {
-      targetScore: 999,
       maxRounds: 12,
       enableAI: false,
       aiDifficulty: 'medium',

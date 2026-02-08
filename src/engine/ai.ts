@@ -1046,9 +1046,6 @@ function chooseKoiKoi_Futsuu(state: KoiKoiGameState): KoiKoiDecision {
   const player = state.players[state.currentPlayerIndex]
   const currentRoundPoints = getYakuTotalPoints(player.completedYaku)
 
-  if (player.score + currentRoundPoints >= state.config.targetScore) {
-    return 'stop'
-  }
   if (state.koikoiCounts[state.currentPlayerIndex] >= 2) {
     return 'stop'
   }
@@ -1077,9 +1074,6 @@ function chooseKoiKoi_TsuyoiAdvanced(state: KoiKoiGameState): KoiKoiDecision {
   const turnsLeft = Math.max(0, player.hand.length)
   const opponentStopPressure = estimateStopRoundPoints(state, opponentIndex)
 
-  if (stopTotal >= state.config.targetScore) {
-    return 'stop'
-  }
   if (state.round >= state.config.maxRounds) {
     return leadIfStop >= 0 ? 'stop' : 'koikoi'
   }
@@ -1151,9 +1145,6 @@ function chooseKoiKoi_Kami(state: KoiKoiGameState): KoiKoiDecision {
   const stopTotal = player.score + stopPoints
   const leadIfStop = stopTotal - opponent.score
 
-  if (stopTotal >= state.config.targetScore) {
-    return 'stop'
-  }
   if (state.round >= state.config.maxRounds) {
     return leadIfStop > 0 ? 'stop' : 'koikoi'
   }

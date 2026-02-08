@@ -83,7 +83,6 @@ export interface TurnAction {
 }
 
 export interface GameConfig {
-  readonly targetScore: number
   readonly maxRounds: number
   readonly enableAI: boolean
   readonly aiDifficulty: 'yowai' | 'futsuu' | 'tsuyoi' | 'yabai' | 'oni' | 'kami'
@@ -92,7 +91,6 @@ export interface GameConfig {
 }
 
 export const DEFAULT_CONFIG: GameConfig = {
-  targetScore: 50,
   maxRounds: 3,
   enableAI: true,
   aiDifficulty: 'futsuu',

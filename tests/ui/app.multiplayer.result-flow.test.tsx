@@ -72,7 +72,6 @@ import App from '../../src/App'
 
 function createGuestGameOverSnapshot(): KoiKoiGameState {
   const base = createNewGame({
-    targetScore: 50,
     maxRounds: 3,
     enableAI: false,
     aiDifficulty: 'futsuu',

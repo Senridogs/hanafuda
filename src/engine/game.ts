@@ -487,8 +487,7 @@ function finishRound(
   const nextRoundScoreHistory = [...state.roundScoreHistory, roundEntry]
 
   const maxRoundsReached = state.round >= state.config.maxRounds
-  const targetReached = nextPlayers.some((player) => player.score >= state.config.targetScore)
-  if (maxRoundsReached || targetReached) {
+  if (maxRoundsReached) {
     return {
       ...clearTurnArtifacts(state),
       players: nextPlayers,

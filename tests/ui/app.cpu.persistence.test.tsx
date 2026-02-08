@@ -85,7 +85,6 @@ function saveCpuCheckpoint(state: KoiKoiGameState): void {
 
 function createCpuGameState(overrides: Partial<KoiKoiGameState> = {}): KoiKoiGameState {
   const base = createNewGame({
-    targetScore: 50,
     maxRounds: 6,
     enableAI: true,
     aiDifficulty: 'futsuu',
