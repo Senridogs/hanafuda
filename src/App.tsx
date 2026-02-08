@@ -77,6 +77,7 @@ type CardMoveEffect = {
   flipFromBack?: boolean
   flipHoldRatio?: number
   flipOnArrival?: boolean
+  freezeBeforeMerge?: boolean
   addToFieldHistoryLength?: number
   fromDeck?: boolean
 }
@@ -135,7 +136,9 @@ const TAP_MAX_DURATION_MS = 300
 const FIELD_EMPTY_SLOT_TARGET_ID = '__field-empty-slot__'
 const EXPANDED_SELECTION_CANCEL_PULSE_MS = 120
 const KOIKOI_DECISION_EXTRA_DELAY_MS = 2000
-const AI_KOIKOI_DECISION_DELAY_MS = AI_THINK_DELAY_MS + KOIKOI_DECISION_EXTRA_DELAY_MS
+const AI_KOIKOI_DECISION_DELAY_MULTIPLIER = 2
+const AI_KOIKOI_DECISION_DELAY_MS =
+  (AI_THINK_DELAY_MS + KOIKOI_DECISION_EXTRA_DELAY_MS) * AI_KOIKOI_DECISION_DELAY_MULTIPLIER
 const TURN_DECISION_EFFECT_DURATION_MS = 2400
 const OPPONENT_KOIKOI_EFFECT_DURATION_MS = TURN_DECISION_EFFECT_DURATION_MS * 2
 const TURN_BANNER_AFTER_KOIKOI_DELAY_MS = TURN_DECISION_EFFECT_DURATION_MS + 140
@@ -673,8 +676,8 @@ function MobileYakuRow(props: {
       <div className="mobile-yaku-targets">
         {groups.map((group) => (
           <div key={group.key} className="mobile-yaku-target-group">
-            <div className="mobile-yaku-cards stack">
-              {group.cards.slice(0, 5).map((card) => (
+            <div className={`mobile-yaku-cards stack ${group.key === 'kasu' ? 'kasu' : ''}`}>
+              {group.cards.slice(0, group.key === 'kasu' ? group.cards.length : 5).map((card) => (
                 <img key={card.id} src={getCardImageUrl(card)} alt={card.name} className="mobile-yaku-card-icon" />
               ))}
             </div>
@@ -916,20 +919,29 @@ function RoundOverlay(props: {
   )
 }
 
-function YakuDropEffect(props: { cards: readonly HanafudaCard[] }) {
-  const { cards } = props
+function YakuDropEffect(props: {
+  cards: readonly HanafudaCard[]
+  yaku: readonly Yaku[]
+}) {
+  const { cards, yaku } = props
+  const timeScale = 2
+  const cardStagger = 0.24 * timeScale
+  const cardDuration = 0.72 * timeScale
+  const yakuNameDuration = 0.36 * timeScale
+  const yakuLabel = yaku.map((item) => item.name).join(' ・ ')
 
   return (
     <AnimatePresence>
       {cards.length > 0 ? (
         <motion.div className="yaku-drop-layer" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <motion.p
-            className="yaku-drop-title"
-            initial={{ y: -30, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 20, opacity: 0 }}
+            className="yaku-drop-yaku-name"
+            initial={{ y: -28, opacity: 0, scale: 0.92 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: 16, opacity: 0, scale: 0.98 }}
+            transition={{ duration: yakuNameDuration, ease: CARD_MOVE_EASE }}
           >
-            役成立！
+            {yakuLabel}
           </motion.p>
           {cards.map((card, index) => (
             <motion.div
@@ -938,7 +950,11 @@ function YakuDropEffect(props: { cards: readonly HanafudaCard[] }) {
               initial={{ y: -260, opacity: 0, rotate: index % 2 === 0 ? -16 : 16 }}
               animate={{ y: 0, opacity: 1, rotate: 0 }}
               exit={{ y: 40, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 95, damping: 22, delay: index * 0.24 }}
+              transition={{
+                duration: cardDuration,
+                delay: index * cardStagger,
+                ease: CARD_MOVE_EASE,
+              }}
             >
               <img src={getCardImageUrl(card)} alt={`${card.month}月 ${card.name}`} loading="lazy" />
             </motion.div>
@@ -1064,15 +1080,20 @@ function CardMoveOverlayEffect(props: {
           const stopTime = hasVia2 ? STAGED_CAPTURE_STOP_TIME : hasVia ? 0.46 : 0.5
           const flipEndTime = hasVia2 ? STAGED_CAPTURE_FLIP_END_TIME : hasVia ? 0.72 : 0.76
           const mergeTime = hasVia2 ? STAGED_CAPTURE_MERGE_TIME : flipEndTime
+          const freezeBeforeMerge = effect.freezeBeforeMerge === true
           if (hasVia2) {
+            const stagedRotateStart = effect.rotateStart ?? -4
+            const stagedRotateMid = freezeBeforeMerge ? stagedRotateStart : 0
             xFrames = [0, xVia, xVia, xVia2, xTo]
             yFrames = [0, yVia, yVia, yVia2, yTo]
-            rotateFrames = [effect.rotateStart ?? -4, 0, 0, 0, effect.rotateEnd ?? 0]
+            rotateFrames = [stagedRotateStart, stagedRotateMid, stagedRotateMid, stagedRotateMid, effect.rotateEnd ?? 0]
             widthFrames = [effect.width, viaWidth, viaWidth, via2Width, effect.toWidth ?? via2Width]
             heightFrames = [effect.height, viaHeight, viaHeight, via2Height, effect.toHeight ?? via2Height]
             times = [0, stopTime, flipEndTime, mergeTime, 1]
             floatTimes = [0, stopTime, flipEndTime, mergeTime, 1]
-            floatScaleFrames = [1, 1.012, 1.012, 1.006, 1]
+            floatScaleFrames = freezeBeforeMerge
+              ? [1, 1, 1, 1, 1]
+              : [1, 1.012, 1.012, 1.006, 1]
             flipTimes = flipOnArrival
               ? [0, stopTime, flipEndTime, mergeTime, 1]
               : [0, 1]
@@ -1080,14 +1101,18 @@ function CardMoveOverlayEffect(props: {
               ? [0, 0, 180, 180, 180]
               : [0, 0]
           } else if (hasVia) {
+            const stagedRotateStart = effect.rotateStart ?? -4
+            const stagedRotateMid = freezeBeforeMerge ? stagedRotateStart : 0
             xFrames = [0, xVia, xVia, xTo]
             yFrames = [0, yVia, yVia, yTo]
-            rotateFrames = [effect.rotateStart ?? -4, 0, 0, effect.rotateEnd ?? 0]
+            rotateFrames = [stagedRotateStart, stagedRotateMid, stagedRotateMid, effect.rotateEnd ?? 0]
             widthFrames = [effect.width, viaWidth, viaWidth, effect.toWidth ?? viaWidth]
             heightFrames = [effect.height, viaHeight, viaHeight, effect.toHeight ?? viaHeight]
             times = [0, stopTime, flipEndTime, 1]
             floatTimes = [0, stopTime, flipEndTime, 1]
-            floatScaleFrames = [1, 1.012, 1.012, 1]
+            floatScaleFrames = freezeBeforeMerge
+              ? [1, 1, 1, 1]
+              : [1, 1.012, 1.012, 1]
             flipTimes = flipOnArrival
               ? [0, stopTime, flipEndTime, 1]
               : [0, 1]
@@ -1404,6 +1429,7 @@ function App() {
   const canAutoAdvance = multiplayer.mode === 'cpu' || isLocalTurn
   const isLobbyConnected = multiplayer.mode !== 'cpu' && multiplayer.connectionStatus === 'connected'
   const koikoiEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'koikoi')
+  const stopEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'stop')
   const interactionLocked = moveEffects.length > 0 || koikoiEffectActive
   const humanDisplayName = multiplayer.mode === 'cpu' ? humanPlayer.name : 'あなた'
   const opponentDisplayName = multiplayer.mode === 'cpu' ? aiPlayer.name : '相手'
@@ -1786,11 +1812,13 @@ function App() {
     }
   }, [game, humanPlayer.id, isCpuAiTurn, isLocalTurn, multiplayer.mode])
   const roundPointBreakdownLines = useMemo(() => buildRoundPointBreakdownLines(game), [game])
+  const sortedNewYaku = useMemo(
+    () => [...game.newYaku].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'ja')),
+    [game.newYaku],
+  )
   const koikoiDecisionYakuLines = useMemo(() => {
-    return [...game.newYaku]
-      .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'ja'))
-      .map((item) => `${item.name} (${item.points}点)`)
-  }, [game.newYaku])
+    return sortedNewYaku.map((item) => `${item.name} (${item.points}点)`)
+  }, [sortedNewYaku])
 
   const playerIntent: TurnIntent = useMemo(() => getTurnIntent(game.phase), [game.phase])
 
@@ -1942,9 +1970,13 @@ function App() {
     return matches.length === 0 ? selectedCard.id : null
   }, [expandedSelectedCardId, game.field, humanPlayer.hand, isAiTurn, isHandExpanded, playerIntent])
 
+  const dropYaku = useMemo(
+    () => (game.phase === 'koikoiDecision' ? sortedNewYaku : []),
+    [game.phase, sortedNewYaku],
+  )
   const dropCards = useMemo(
-    () => (game.phase === 'koikoiDecision' ? flattenNewYakuCards(game.newYaku) : []),
-    [game.phase, game.newYaku],
+    () => (game.phase === 'koikoiDecision' ? flattenNewYakuCards(sortedNewYaku) : []),
+    [game.phase, sortedNewYaku],
   )
   const deckRevealCard = useMemo(() => {
     if (game.phase !== 'drawReveal' && game.phase !== 'selectDrawMatch') {
@@ -2135,12 +2167,14 @@ function App() {
     const useArrivalFlip = isAiHiddenHandCapture && useMobileViewLayout
     const hiddenHandHold = isAiHiddenHandCapture && !useArrivalFlip ? CPU_HAND_REVEAL_HOLD_RATIO : 0
     const concealTargetDuringHiddenFlip = isAiHiddenHandCapture && !useArrivalFlip
-    const yakuStopX = zoneBaseX - targetCardWidth / 2
-    const yakuStopY = zoneBaseY - targetCardHeight * 0.34
+    const revealStopWidth = sourceRect.width
+    const revealStopHeight = sourceRect.height
+    const yakuStopX = zoneBaseX - revealStopWidth / 2
+    const yakuStopY = zoneBaseY - revealStopHeight * 0.34
     const playedViaX = useArrivalFlip ? yakuStopX : matchedRect.left
     const playedViaY = useArrivalFlip ? yakuStopY : matchedRect.top
-    const playedViaWidth = useArrivalFlip ? targetCardWidth : matchedRect.width
-    const playedViaHeight = useArrivalFlip ? targetCardHeight : matchedRect.height
+    const playedViaWidth = useArrivalFlip ? revealStopWidth : matchedRect.width
+    const playedViaHeight = useArrivalFlip ? revealStopHeight : matchedRect.height
     const matchedCardTilt = stableTilt(matchedCard.id)
     const effectFromPlayed: CardMoveEffect = {
       id: captureEffectIdRef.current,
@@ -2173,6 +2207,11 @@ function App() {
     }
     captureEffectIdRef.current += 1
 
+    const fieldRotateStart = useArrivalFlip
+      ? matchedCardTilt
+      : concealTargetDuringHiddenFlip
+        ? matchedCardTilt
+        : 4
     const effectFromField: CardMoveEffect = {
       id: captureEffectIdRef.current,
       card: matchedCard,
@@ -2192,13 +2231,14 @@ function App() {
       height: matchedRect.height,
       toWidth: targetCardWidth,
       toHeight: targetCardHeight,
-      rotateStart: concealTargetDuringHiddenFlip ? matchedCardTilt : 4,
+      rotateStart: fieldRotateStart,
       rotateEnd: concealTargetDuringHiddenFlip ? matchedCardTilt - randomRotate * 0.35 : -randomRotate * 0.8,
       duration: useArrivalFlip ? STAGED_CAPTURE_DURATION : 1.8,
       zIndex: 4,
       hideFieldCardId: matchedCard.id,
       flipHoldRatio: hiddenHandHold > 0 ? hiddenHandHold : undefined,
       flipOnArrival: useArrivalFlip,
+      freezeBeforeMerge: useArrivalFlip,
     }
     captureEffectIdRef.current += 1
     return [effectFromPlayed, effectFromField]
@@ -2375,8 +2415,8 @@ function App() {
         if (captureZoneRect) {
           const zoneBaseX = captureZoneRect.left + captureZoneRect.width * 0.5
           const zoneBaseY = captureZoneRect.top + Math.min(captureZoneRect.height * 0.5, 60)
-          const stopCardWidth = CAPTURE_STACK_CARD_WIDTH
-          const stopCardHeight = stopCardWidth * CARD_HEIGHT_PER_WIDTH
+          const stopCardWidth = sourceRect.width
+          const stopCardHeight = sourceRect.height
           viaX = zoneBaseX - stopCardWidth / 2
           viaY = zoneBaseY - stopCardHeight * 0.34
           viaWidth = stopCardWidth
@@ -3682,7 +3722,10 @@ function App() {
         </section>
       ) : null}
 
-      <YakuDropEffect cards={dropCards} />
+      <YakuDropEffect
+        cards={dropCards}
+        yaku={dropYaku}
+      />
       <AnimatePresence>
         {turnBanner ? (
           <motion.div
@@ -3795,7 +3838,7 @@ function App() {
         />
       ) : null}
 
-      {game.phase === 'roundEnd' ? (
+      {game.phase === 'roundEnd' && !stopEffectActive ? (
         <RoundOverlay
           title="月が終了しました"
           message={
@@ -3813,7 +3856,7 @@ function App() {
         />
       ) : null}
 
-      {game.phase === 'gameOver' ? (
+      {game.phase === 'gameOver' && !stopEffectActive ? (
         <RoundOverlay
           title="対局終了"
           message={

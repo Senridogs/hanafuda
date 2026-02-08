@@ -813,6 +813,11 @@ button.mobile-yaku-strip.active {
   width: auto;
 }
 
+.mobile-yaku-cards.stack.kasu {
+  max-width: none;
+  overflow: visible;
+}
+
 .mobile-yaku-card-slot {
   width: var(--mobile-yaku-card-width);
   min-width: var(--mobile-yaku-card-width);
@@ -1620,24 +1625,37 @@ button:hover {
 .yaku-drop-layer {
   position: fixed;
   left: 50%;
-  top: 16%;
-  transform: translateX(-50%);
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: flex-start;
   gap: 10px;
-  z-index: 30;
+  width: min(96vw, 760px);
+  z-index: 1405;
   pointer-events: none;
 }
 
-.yaku-drop-title {
-  position: absolute;
-  left: 50%;
-  top: -34px;
-  transform: translateX(-50%);
+.yaku-drop-yaku-name {
+  flex: 0 0 100%;
   margin: 0;
-  font-size: 1.1rem;
-  color: #ffe2af;
-  text-shadow: 0 2px 10px rgb(0 0 0 / 65%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 231 188 / 46%);
+  background: rgb(20 10 6 / 52%);
+  text-align: center;
+  font-family: 'Hiragino Mincho ProN', 'Yu Mincho', 'BIZ UDPMincho', 'MS PMincho', serif;
+  font-size: clamp(1.35rem, 3.8vw, 2.2rem);
+  line-height: 1.15;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: #fff3d5;
+  text-shadow:
+    0 1px 0 #642915,
+    0 3px 8px rgb(0 0 0 / 64%),
+    0 0 22px rgb(255 181 103 / 36%);
+  transform: skewX(-6deg);
 }
 
 .yaku-drop-card {
@@ -2108,6 +2126,12 @@ button:hover {
     background: rgb(255 247 204 / 72%);
   }
 
+  .mobile-yaku-header,
+  .mobile-mini-name,
+  .mobile-mini-score {
+    color: #3f3f3f;
+  }
+
   .table-layout.mobile {
     gap: 0;
   }
@@ -2115,11 +2139,16 @@ button:hover {
   .board-center {
     --board-card-gap: clamp(2px, 1cqw, 7px);
     --board-rack-padding: clamp(3px, 1.05cqw, 8px);
-    /* モバイル: 縦横両方を考慮して最大サイズを計算 */
+    /* モバイル: 縦長端末ではカードを拡大しつつ、横幅上限を超えないよう制御 */
     --board-vertical-padding-mobile: calc((var(--board-rack-padding) * 6) + 20px + 16px);
+    --board-field-side-width-mobile: clamp(54px, 19cqw, 78px);
     --board-card-width-fit-x-mobile: calc((100cqw - (var(--board-rack-padding) * 2) - (var(--board-card-gap) * 7)) / 8);
+    --board-card-width-fit-x-practical-mobile: calc((100cqw - var(--board-field-side-width-mobile) - 6px - (var(--board-rack-padding) * 2) - (var(--board-card-gap) * 3)) / 5);
     --board-card-width-fit-y-mobile: calc((100cqh - var(--board-vertical-padding-mobile)) / 6.56);
-    --board-card-width: clamp(30px, min(var(--board-card-width-fit-x-mobile), var(--board-card-width-fit-y-mobile)), 58px);
+    --board-card-width-base-mobile: min(var(--board-card-width-fit-x-mobile), var(--board-card-width-fit-y-mobile));
+    --board-card-width-headroom-mobile: max(0px, calc(var(--board-card-width-fit-x-practical-mobile) - var(--board-card-width-base-mobile)));
+    --board-card-width-tall-boost-mobile: clamp(0px, calc((100cqh - 760px) * 0.08), 16px);
+    --board-card-width: clamp(30px, calc(var(--board-card-width-base-mobile) + min(var(--board-card-width-headroom-mobile), var(--board-card-width-tall-boost-mobile))), 64px);
   }
 
   .board-center.mobile {
@@ -2184,7 +2213,7 @@ button:hover {
   }
 
   .field-row {
-    grid-template-columns: clamp(54px, 19cqw, 78px) 1fr;
+    grid-template-columns: var(--board-field-side-width-mobile) 1fr;
     gap: 6px;
   }
 
@@ -2210,17 +2239,17 @@ button:hover {
   }
 
   .yaku-drop-layer {
-    top: 12%;
+    top: 50%;
     width: calc(100vw - (var(--app-safe-padding) * 2));
-    max-width: calc(100vw - (var(--app-safe-padding) * 2));
     justify-content: center;
     flex-wrap: wrap;
     gap: 6px;
+    padding: 0;
   }
 
-  .yaku-drop-title {
-    top: -26px;
-    font-size: 0.9rem;
+  .yaku-drop-yaku-name {
+    font-size: clamp(1.05rem, 6.2vw, 1.46rem);
+    letter-spacing: 0.06em;
   }
 
   .turn-callout-layer {
