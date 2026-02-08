@@ -20,47 +20,152 @@ interface CpuAssistProfile {
   readonly drawBias: 'best' | 'worst'
 }
 
+export type CpuRoundMood = 'hot' | 'normal' | 'cold'
+
+const ROUND_MOOD_BASE: Record<GameConfig['aiDifficulty'], { hot: number; cold: number }> = {
+  yowai: { hot: 0.2, cold: 0.25 },
+  futsuu: { hot: 0.2, cold: 0.2 },
+  tsuyoi: { hot: 0.28, cold: 0.23 },
+  yabai: { hot: 0.32, cold: 0.22 },
+  oni: { hot: 0.36, cold: 0.24 },
+  kami: { hot: 0.4, cold: 0.24 },
+}
+
+const DIFFICULTY_SEED_OFFSET: Record<GameConfig['aiDifficulty'], number> = {
+  yowai: 11,
+  futsuu: 23,
+  tsuyoi: 37,
+  yabai: 53,
+  oni: 71,
+  kami: 89,
+}
+
 const CPU_ASSIST_BY_DIFFICULTY: Partial<Record<GameConfig['aiDifficulty'], CpuAssistProfile>> = {
   yowai: {
-    openingMargin: 1,
-    maxExtraRetries: 2,
+    openingMargin: 2,
+    maxExtraRetries: 4,
     drawSearchWindow: 2,
-    drawRigChance: 0.1,
+    drawRigChance: 0.14,
     openingBias: 'favor-human',
     drawBias: 'worst',
   },
   tsuyoi: {
-    openingMargin: 1,
-    maxExtraRetries: 6,
+    openingMargin: 2,
+    maxExtraRetries: 10,
     drawSearchWindow: 2,
-    drawRigChance: 0.15,
-    openingBias: 'favor-ai',
-    drawBias: 'best',
-  },
-  yabai: {
-    openingMargin: 4,
-    maxExtraRetries: 18,
-    drawSearchWindow: 2,
-    drawRigChance: 0.35,
+    drawRigChance: 0.22,
     openingBias: 'favor-ai',
     drawBias: 'best',
   },
   oni: {
-    openingMargin: 8,
-    maxExtraRetries: 32,
-    drawSearchWindow: 3,
-    drawRigChance: 0.55,
+    openingMargin: 5,
+    maxExtraRetries: 16,
+    drawSearchWindow: 2,
+    drawRigChance: 0.34,
     openingBias: 'favor-ai',
     drawBias: 'best',
   },
   kami: {
-    openingMargin: 13,
-    maxExtraRetries: 54,
-    drawSearchWindow: 3,
-    drawRigChance: 0.8,
+    openingMargin: 7,
+    maxExtraRetries: 22,
+    drawSearchWindow: 2,
+    drawRigChance: 0.42,
     openingBias: 'favor-ai',
     drawBias: 'best',
   },
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value))
+}
+
+function mixSeed(seed: number, value: number): number {
+  let next = (seed ^ value) >>> 0
+  next = Math.imul(next ^ (next >>> 16), 0x7feb352d)
+  next = Math.imul(next ^ (next >>> 15), 0x846ca68b)
+  return (next ^ (next >>> 16)) >>> 0
+}
+
+function buildRoundMoodRoll(
+  difficulty: GameConfig['aiDifficulty'],
+  round: number,
+  maxRounds: number,
+  ownScore: number,
+  opponentScore: number,
+): number {
+  let seed = 0x9e37_79b9
+  seed = mixSeed(seed, DIFFICULTY_SEED_OFFSET[difficulty])
+  seed = mixSeed(seed, round)
+  seed = mixSeed(seed, maxRounds)
+  seed = mixSeed(seed, ownScore + 97)
+  seed = mixSeed(seed, opponentScore + 193)
+  return seed / 0x1_0000_0000
+}
+
+export function resolveDifficultyRoundMood(
+  difficulty: GameConfig['aiDifficulty'],
+  round: number,
+  maxRounds: number,
+  ownScore: number,
+  opponentScore: number,
+): CpuRoundMood {
+  const base = ROUND_MOOD_BASE[difficulty]
+  let hot = base.hot
+  let cold = base.cold
+  const lead = ownScore - opponentScore
+
+  if (lead <= -10) {
+    hot += 0.12
+    cold -= 0.05
+  } else if (lead >= 12) {
+    hot -= 0.06
+    cold += 0.1
+  }
+
+  if (round === maxRounds) {
+    hot += 0.05
+    cold -= 0.02
+  }
+
+  hot = clamp(hot, 0.03, 0.75)
+  cold = clamp(cold, 0.03, 0.75)
+  if (hot + cold > 0.92) {
+    const scale = 0.92 / (hot + cold)
+    hot *= scale
+    cold *= scale
+  }
+
+  const roll = buildRoundMoodRoll(difficulty, round, maxRounds, ownScore, opponentScore)
+  if (roll < cold) {
+    return 'cold'
+  }
+  if (roll > 1 - hot) {
+    return 'hot'
+  }
+  return 'normal'
+}
+
+function applyRoundMoodToAssistProfile(profile: CpuAssistProfile, mood: CpuRoundMood): CpuAssistProfile {
+  if (mood === 'normal') {
+    return profile
+  }
+
+  const polarity = mood === 'hot' ? 1 : -1
+  const openingDirection = profile.openingBias === 'favor-ai' ? 1 : -1
+  const drawDirection = profile.drawBias === 'best' ? 1 : -1
+
+  const openingMultiplier = 1 + polarity * openingDirection * 0.28
+  const retryMultiplier = 1 + polarity * openingDirection * 0.34
+  const drawChanceMultiplier = 1 + polarity * drawDirection * 0.25
+  const drawWindowShift = polarity * drawDirection
+
+  return {
+    ...profile,
+    openingMargin: Math.max(0, Math.round(profile.openingMargin * openingMultiplier)),
+    maxExtraRetries: Math.max(0, Math.round(profile.maxExtraRetries * retryMultiplier)),
+    drawSearchWindow: Math.round(clamp(profile.drawSearchWindow + drawWindowShift, 1, 5)),
+    drawRigChance: clamp(profile.drawRigChance * drawChanceMultiplier, 0.03, 0.93),
+  }
 }
 
 export type MatchSource = 'hand' | 'draw' | null
@@ -154,6 +259,26 @@ function getCpuAssistProfile(config: GameConfig): CpuAssistProfile | null {
   return CPU_ASSIST_BY_DIFFICULTY[config.aiDifficulty] ?? null
 }
 
+function resolveCpuAssistProfileForRound(
+  config: GameConfig,
+  round: number,
+  humanScore: number,
+  cpuScore: number,
+): CpuAssistProfile | null {
+  const baseProfile = getCpuAssistProfile(config)
+  if (!baseProfile) {
+    return null
+  }
+  const mood = resolveDifficultyRoundMood(
+    config.aiDifficulty,
+    round,
+    config.maxRounds,
+    cpuScore,
+    humanScore,
+  )
+  return applyRoundMoodToAssistProfile(baseProfile, mood)
+}
+
 function cardTempoValue(card: HanafudaCard): number {
   return DRAW_TYPE_WEIGHT[card.type] * 2 + card.points
 }
@@ -244,7 +369,12 @@ function moveDeckIndexToTop(deck: readonly HanafudaCard[], index: number): Hanaf
 }
 
 function maybeRigDeckForCpu(state: KoiKoiGameState): readonly HanafudaCard[] {
-  const assistProfile = getCpuAssistProfile(state.config)
+  const assistProfile = resolveCpuAssistProfileForRound(
+    state.config,
+    state.round,
+    state.players[0].score,
+    state.players[1].score,
+  )
   if (!assistProfile || state.deck.length <= 1) {
     return state.deck
   }
@@ -274,7 +404,12 @@ function dealRound(
   starterIndex: 0 | 1,
   prevRoundScoreHistory: readonly RoundScoreEntry[] = [],
 ): KoiKoiGameState {
-  const assistProfile = getCpuAssistProfile(config)
+  const assistProfile = resolveCpuAssistProfileForRound(
+    config,
+    round,
+    players[0].score,
+    players[1].score,
+  )
   let dealt = dealCards(shuffleDeck(createDeck()))
   let retries = 0
   const retryLimit = 256 + (assistProfile?.maxExtraRetries ?? 0)

@@ -98,6 +98,21 @@ type HandDragState = {
   startTime: number
 }
 
+type RuleHelpYakuEntry = {
+  key: string
+  name: string
+  condition: string
+  points: string
+  exampleCardIds?: readonly string[]
+}
+
+type RuleHelpPage = {
+  key: string
+  title: string
+  subtitle: string
+  content: ReactNode
+}
+
 const CPU_HAND_REVEAL_HOLD_RATIO = 0.52
 const HAND_LAYOUT_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1]
 const HAND_LAYOUT_TRANSITION = { layout: { duration: 0.82, ease: HAND_LAYOUT_EASE } }
@@ -128,6 +143,135 @@ const PC_YAKU_LIGHT_KEYS = new Set(['goko', 'shiko', 'ame-shiko', 'sanko'])
 const PC_YAKU_TANE_KEYS = new Set(['tane', 'inoshikacho', 'hanami-zake', 'tsukimi-zake'])
 const PC_YAKU_TAN_KEYS = new Set(['tanzaku', 'akatan', 'aotan'])
 const TURN_DECISION_SPARK_INDICES = [0, 1, 2, 3, 4, 5, 6, 7] as const
+const RULE_HELP_SWIPE_THRESHOLD_PX = 54
+const RULE_HELP_CARD_TYPE_LABELS: Readonly<Record<HanafudaCard['type'], string>> = {
+  hikari: '光',
+  tane: '種',
+  tanzaku: '短冊',
+  kasu: 'カス',
+}
+const RULE_HELP_MONTH_GROUPS = Array.from({ length: 12 }, (_, index) => {
+  const month = (index + 1) as HanafudaCard['month']
+  return {
+    month,
+    cards: HANAFUDA_CARDS.filter((card) => card.month === month),
+  }
+})
+const RULE_HELP_HIGH_YAKU_ENTRIES: readonly RuleHelpYakuEntry[] = [
+  {
+    key: 'goko',
+    name: '五光',
+    condition: '光札を5枚集める',
+    points: '10点',
+    exampleCardIds: ['jan-hikari', 'mar-hikari', 'aug-hikari', 'nov-hikari', 'dec-hikari'],
+  },
+  {
+    key: 'shiko',
+    name: '四光',
+    condition: '光札を4枚（雨札なし）',
+    points: '8点',
+    exampleCardIds: ['jan-hikari', 'mar-hikari', 'aug-hikari', 'dec-hikari'],
+  },
+  {
+    key: 'ame-shiko',
+    name: '雨四光',
+    condition: '光札を4枚（柳に小野道風を含む）',
+    points: '7点',
+    exampleCardIds: ['jan-hikari', 'mar-hikari', 'aug-hikari', 'nov-hikari'],
+  },
+  {
+    key: 'sanko',
+    name: '三光',
+    condition: '光札を3枚（雨札なし）',
+    points: '5点',
+    exampleCardIds: ['jan-hikari', 'mar-hikari', 'dec-hikari'],
+  },
+  {
+    key: 'inoshikacho',
+    name: '猪鹿蝶',
+    condition: '牡丹に蝶・萩に猪・紅葉に鹿',
+    points: '5点 + 追加種札で加点',
+    exampleCardIds: ['jun-tane', 'jul-tane', 'oct-tane'],
+  },
+  {
+    key: 'hanami-zake',
+    name: '花見で一杯',
+    condition: '桜に幕 + 菊に盃',
+    points: '5点',
+    exampleCardIds: ['mar-hikari', 'sep-tane'],
+  },
+  {
+    key: 'tsukimi-zake',
+    name: '月見で一杯',
+    condition: '芒に月 + 菊に盃',
+    points: '5点',
+    exampleCardIds: ['aug-hikari', 'sep-tane'],
+  },
+  {
+    key: 'akatan',
+    name: '赤短',
+    condition: '1/2/3月の赤短を3枚',
+    points: '5点 + 追加短冊で加点',
+    exampleCardIds: ['jan-tanzaku', 'feb-tanzaku', 'mar-tanzaku'],
+  },
+  {
+    key: 'aotan',
+    name: '青短',
+    condition: '6/9/10月の青短を3枚',
+    points: '5点 + 追加短冊で加点',
+    exampleCardIds: ['jun-tanzaku', 'sep-tanzaku', 'oct-tanzaku'],
+  },
+] as const
+const RULE_HELP_COUNT_YAKU_ENTRIES: readonly RuleHelpYakuEntry[] = [
+  {
+    key: 'tane',
+    name: 'たね',
+    condition: '種札を5枚以上',
+    points: '1点 + (種札 - 5)',
+    exampleCardIds: ['feb-tane', 'apr-tane', 'may-tane', 'jun-tane', 'jul-tane'],
+  },
+  {
+    key: 'tanzaku',
+    name: 'たんざく',
+    condition: '短冊札を5枚以上',
+    points: '1点 + (短冊 - 5)',
+    exampleCardIds: ['jan-tanzaku', 'feb-tanzaku', 'mar-tanzaku', 'jun-tanzaku', 'sep-tanzaku'],
+  },
+  {
+    key: 'kasu',
+    name: 'かす',
+    condition: 'カス札を10枚以上',
+    points: '1点 + (カス - 10)',
+    exampleCardIds: [
+      'jan-kasu-1',
+      'jan-kasu-2',
+      'feb-kasu-1',
+      'feb-kasu-2',
+      'mar-kasu-1',
+      'mar-kasu-2',
+      'apr-kasu-1',
+      'apr-kasu-2',
+      'may-kasu-1',
+      'may-kasu-2',
+    ],
+  },
+] as const
+const RULE_HELP_SCORING_NOTES: readonly string[] = [
+  '役が1つもない場合は1点で上がりになります。',
+  '役合計が7点以上なら最終得点が2倍になります。',
+  '相手がこいこい中に上がると最終得点がさらに2倍になります。',
+] as const
+const RULE_HELP_CARD_ID_MAP = new Map(HANAFUDA_CARDS.map((card) => [card.id, card] as const))
+
+function getRuleHelpExampleCards(cardIds: readonly string[] | undefined): readonly HanafudaCard[] {
+  if (!cardIds || cardIds.length === 0) {
+    return []
+  }
+  return cardIds.flatMap((cardId) => {
+    const card = RULE_HELP_CARD_ID_MAP.get(cardId)
+    return card ? [card] : []
+  })
+}
 
 function getPcYakuEntryRank(key: string): number {
   if (PC_YAKU_LIGHT_KEYS.has(key)) {
@@ -182,14 +326,14 @@ function buildRoundPointBreakdownLines(game: KoiKoiGameState): readonly string[]
   })
 
   const lines: string[] = yaku.length > 0
-    ? yaku.map((item) => `${item.name}: ${item.points}文`)
-    : ['役なし: 1文']
-  lines.push(`役合計: ${basePoints}文`)
+    ? yaku.map((item) => `${item.name}: ${item.points}点`)
+    : ['役なし: 1点']
+  lines.push(`役合計: ${basePoints}点`)
 
   if (matchedMultiplier) {
     const appliedMultipliers: number[] = []
     if (matchedMultiplier.highPointBonus) {
-      lines.push('7文以上ボーナス: ×2')
+      lines.push('7点以上ボーナス: ×2')
       appliedMultipliers.push(2)
     }
     if (matchedMultiplier.opponentKoiBonus) {
@@ -197,14 +341,14 @@ function buildRoundPointBreakdownLines(game: KoiKoiGameState): readonly string[]
       appliedMultipliers.push(2)
     }
     if (appliedMultipliers.length > 0) {
-      lines.push(`最終得点: ${basePoints} × ${appliedMultipliers.join(' × ')} = ${game.roundPoints}文`)
+      lines.push(`最終得点: ${basePoints} × ${appliedMultipliers.join(' × ')} = ${game.roundPoints}点`)
     } else {
-      lines.push(`最終得点: ${game.roundPoints}文`)
+      lines.push(`最終得点: ${game.roundPoints}点`)
     }
     return lines
   }
 
-  lines.push(`最終得点: ${game.roundPoints}文`)
+  lines.push(`最終得点: ${game.roundPoints}点`)
   return lines
 }
 
@@ -433,7 +577,7 @@ function RoleYakuPanel(props: {
     <aside className={`yaku-panel ${side} detailed ${active ? 'active' : ''}`} data-capture-zone={captureZoneId}>
       <div className="panel-player-head">
         <h2 className="panel-player-name">{title}</h2>
-        <span className="panel-mini-score">{score}文</span>
+        <span className="panel-mini-score">{score}点</span>
       </div>
 
       {pcOrderedProgressEntries.length > 0 ? (
@@ -550,8 +694,8 @@ function MobileYakuRow(props: {
   return (
     <div className={`mobile-yaku-section ${active ? 'active' : ''}`} data-capture-zone={captureZoneId}>
       <div className="mobile-yaku-header">
-        <span>{title}</span>
-        <span className="mobile-mini-score">{score}文</span>
+        <span className="mobile-mini-name">{title}</span>
+        <span className="mobile-mini-score">{score}点</span>
       </div>
       {renderRow([{ key: 'hikari', cards: hikariCards, entries: hikariEntries }])}
       {renderRow([
@@ -612,10 +756,10 @@ function ScoreTable(props: {
             <tr key={row.round} className={row.isCurrent ? 'current-round' : ''}>
               <td className="score-table-month">{row.round}月</td>
               <td className={row.player1Points !== null && row.player1Points > 0 ? 'won' : ''}>
-                {row.player1Points !== null ? `${row.player1Points}文` : '-'}
+                {row.player1Points !== null ? `${row.player1Points}点` : '-'}
               </td>
               <td className={row.player2Points !== null && row.player2Points > 0 ? 'won' : ''}>
-                {row.player2Points !== null ? `${row.player2Points}文` : '-'}
+                {row.player2Points !== null ? `${row.player2Points}点` : '-'}
               </td>
             </tr>
           ))}
@@ -624,14 +768,89 @@ function ScoreTable(props: {
           <tr className="score-table-total">
             <td>合計</td>
             <td className={player1TotalScore > player2TotalScore ? 'leading' : ''}>
-              {player1TotalScore}文
+              {player1TotalScore}点
             </td>
             <td className={player2TotalScore > player1TotalScore ? 'leading' : ''}>
-              {player2TotalScore}文
+              {player2TotalScore}点
             </td>
           </tr>
         </tfoot>
       </table>
+    </div>
+  )
+}
+
+function RuleHelpMonthPage(props: {
+  startMonth: number
+  endMonth: number
+  compact?: boolean
+}) {
+  const { startMonth, endMonth, compact = false } = props
+  const groups = RULE_HELP_MONTH_GROUPS.filter((group) => group.month >= startMonth && group.month <= endMonth)
+
+  return (
+    <div className={`rule-help-month-grid ${compact ? 'compact' : ''}`}>
+      {groups.map((group) => (
+        <section key={`month-${group.month}`} className="rule-help-month-section">
+          <header className="rule-help-month-head">
+            <h3>{group.month}月</h3>
+            <p>{group.cards[0]?.flowerName ?? ''}</p>
+          </header>
+          <div className="rule-help-month-card-list">
+            {group.cards.map((card) => (
+              <div key={card.id} className="rule-help-month-card-item">
+                <img src={getCardImageUrl(card)} alt={`${card.month}月 ${card.name}`} loading="lazy" />
+                <span className={`rule-help-card-type ${card.type}`}>{RULE_HELP_CARD_TYPE_LABELS[card.type]}</span>
+                <span className="rule-help-card-name">{card.name}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  )
+}
+
+function RuleHelpYakuPage(props: {
+  entries: readonly RuleHelpYakuEntry[]
+  notes?: readonly string[]
+}) {
+  const { entries, notes } = props
+  return (
+    <div className="rule-help-yaku-layout">
+      <div className="rule-help-yaku-list">
+        {entries.map((entry) => {
+          const exampleCards = getRuleHelpExampleCards(entry.exampleCardIds)
+          return (
+            <article key={entry.key} className="rule-help-yaku-item">
+              <div className="rule-help-yaku-head">
+                <h3>{entry.name}</h3>
+                <span>{entry.points}</span>
+              </div>
+              <p>{entry.condition}</p>
+              {exampleCards.length > 0 ? (
+                <div className="rule-help-yaku-example" aria-label={`${entry.name}のカード例`}>
+                  {exampleCards.map((card) => (
+                    <img
+                      key={`${entry.key}-${card.id}`}
+                      src={getCardImageUrl(card)}
+                      alt={`${card.month}月 ${card.name}`}
+                      loading="lazy"
+                    />
+                  ))}
+                </div>
+              ) : null}
+            </article>
+          )
+        })}
+      </div>
+      {notes && notes.length > 0 ? (
+        <ul className="rule-help-notes">
+          {notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   )
 }
@@ -1111,6 +1330,9 @@ function App() {
   const [pendingAiHandPlaceholder, setPendingAiHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
 
   const [isScoreTableVisible, setIsScoreTableVisible] = useState(false)
+  const [isRuleHelpVisible, setIsRuleHelpVisible] = useState(false)
+  const [ruleHelpPageIndex, setRuleHelpPageIndex] = useState(0)
+  const ruleHelpSwipeStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
   const [isHandExpanded, setIsHandExpanded] = useState(false)
   const expandedHandPlaceholderRef = useRef<HTMLDivElement | null>(null)
   const [expandedRackTop, setExpandedRackTop] = useState<number | null>(null)
@@ -1172,6 +1394,39 @@ function App() {
   // Use PC layout only when in fullscreen AND landscape orientation
   // Portrait fullscreen keeps mobile layout
   const useMobileViewLayout = isMobileLayout && !(isLandscapeFullscreen && isLandscapeOrientation)
+  const ruleHelpPages = useMemo<readonly RuleHelpPage[]>(() => {
+    const monthRanges: ReadonlyArray<readonly [number, number]> = isMobileLayout
+      ? [[1, 4], [5, 8], [9, 12]]
+      : [[1, 12]]
+
+    const monthPages: RuleHelpPage[] = monthRanges.map(([startMonth, endMonth], index) => ({
+      key: `months-${index + 1}`,
+      title: startMonth === endMonth ? `月札 ${startMonth}月` : `月札 ${startMonth}〜${endMonth}月`,
+      subtitle: '札の月を覚える',
+      content: <RuleHelpMonthPage startMonth={startMonth} endMonth={endMonth} compact />,
+    }))
+
+    return [
+      ...monthPages,
+      {
+        key: 'yaku-main',
+        title: '役一覧（基本役）',
+        subtitle: '高得点役・組み合わせ役',
+        content: <RuleHelpYakuPage entries={RULE_HELP_HIGH_YAKU_ENTRIES} />,
+      },
+      {
+        key: 'yaku-count',
+        title: '役一覧（枚数役）',
+        subtitle: '枚数で伸びる役と倍率',
+        content: <RuleHelpYakuPage entries={RULE_HELP_COUNT_YAKU_ENTRIES} notes={RULE_HELP_SCORING_NOTES} />,
+      },
+    ]
+  }, [isMobileLayout])
+  const currentRuleHelpPage = ruleHelpPages[ruleHelpPageIndex] ?? ruleHelpPages[0]
+
+  useEffect(() => {
+    setRuleHelpPageIndex((current) => Math.min(current, Math.max(0, ruleHelpPages.length - 1)))
+  }, [ruleHelpPages.length])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -1317,6 +1572,79 @@ function App() {
       // Exit fullscreen failed
     }
   }, [])
+  const openRuleHelp = useCallback((): void => {
+    setIsScoreTableVisible(false)
+    setRuleHelpPageIndex(0)
+    setIsRuleHelpVisible(true)
+  }, [])
+  const closeRuleHelp = useCallback((): void => {
+    ruleHelpSwipeStartRef.current = null
+    setIsRuleHelpVisible(false)
+  }, [])
+  const goToRuleHelpPage = useCallback((nextIndex: number): void => {
+    setRuleHelpPageIndex(() => {
+      const maxIndex = Math.max(0, ruleHelpPages.length - 1)
+      return Math.min(Math.max(nextIndex, 0), maxIndex)
+    })
+  }, [ruleHelpPages.length])
+  const goToPreviousRuleHelpPage = useCallback((): void => {
+    goToRuleHelpPage(ruleHelpPageIndex - 1)
+  }, [goToRuleHelpPage, ruleHelpPageIndex])
+  const goToNextRuleHelpPage = useCallback((): void => {
+    goToRuleHelpPage(ruleHelpPageIndex + 1)
+  }, [goToRuleHelpPage, ruleHelpPageIndex])
+  const handleRuleHelpPointerDown = useCallback((event: PointerEvent<HTMLDivElement>): void => {
+    ruleHelpSwipeStartRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    }
+  }, [])
+  const handleRuleHelpPointerUp = useCallback((event: PointerEvent<HTMLDivElement>): void => {
+    const start = ruleHelpSwipeStartRef.current
+    ruleHelpSwipeStartRef.current = null
+    if (!start || start.pointerId !== event.pointerId) {
+      return
+    }
+    const deltaX = event.clientX - start.x
+    const deltaY = event.clientY - start.y
+    if (Math.abs(deltaX) < RULE_HELP_SWIPE_THRESHOLD_PX || Math.abs(deltaX) <= Math.abs(deltaY)) {
+      return
+    }
+    if (deltaX < 0) {
+      goToNextRuleHelpPage()
+      return
+    }
+    goToPreviousRuleHelpPage()
+  }, [goToNextRuleHelpPage, goToPreviousRuleHelpPage])
+  const handleRuleHelpPointerCancel = useCallback((): void => {
+    ruleHelpSwipeStartRef.current = null
+  }, [])
+  const isRuleHelpFirstPage = ruleHelpPageIndex <= 0
+  const isRuleHelpLastPage = ruleHelpPageIndex >= ruleHelpPages.length - 1
+
+  useEffect(() => {
+    if (!isRuleHelpVisible) {
+      ruleHelpSwipeStartRef.current = null
+      return
+    }
+    const maxIndex = Math.max(0, ruleHelpPages.length - 1)
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        closeRuleHelp()
+        return
+      }
+      if (event.key === 'ArrowLeft') {
+        setRuleHelpPageIndex((current) => Math.max(0, current - 1))
+        return
+      }
+      if (event.key === 'ArrowRight') {
+        setRuleHelpPageIndex((current) => Math.min(maxIndex, current + 1))
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [closeRuleHelp, isRuleHelpVisible, ruleHelpPages.length])
 
   useEffect(() => {
     const prev = prevPlayerIndexRef.current
@@ -1382,7 +1710,7 @@ function App() {
         return isLocalTurn ? 'こいこい or 上がりを選択' : '相手がこいこい判断中'
       case 'roundEnd':
         return game.roundWinner
-          ? `${game.roundWinner === humanPlayer.id ? 'あなた' : '相手'}が ${game.roundPoints}文 獲得`
+          ? `${game.roundWinner === humanPlayer.id ? 'あなた' : '相手'}が ${game.roundPoints}点 獲得`
           : 'この月は引き分け'
       case 'gameOver':
         return game.winner
@@ -1396,7 +1724,7 @@ function App() {
   const koikoiDecisionYakuLines = useMemo(() => {
     return [...game.newYaku]
       .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'ja'))
-      .map((item) => `${item.name} (${item.points}文)`)
+      .map((item) => `${item.name} (${item.points}点)`)
   }, [game.newYaku])
 
   const playerIntent: TurnIntent = useMemo(() => getTurnIntent(game.phase), [game.phase])
@@ -2555,6 +2883,8 @@ function App() {
     setTurnDecisionCallouts([])
     setAnimatedAddToFieldHistoryLength(0)
     setRemoteQueueVersion(0)
+    setIsRuleHelpVisible(false)
+    setRuleHelpPageIndex(0)
     remoteCommandQueueRef.current = []
     pendingCaptureGameRef.current = null
     skipCaptureHistoryLengthRef.current = null
@@ -2775,7 +3105,10 @@ function App() {
           <button
             type="button"
             className="chrome-toggle-button"
-            onClick={() => setIsScoreTableVisible((current) => !current)}
+            onClick={() => {
+              setIsRuleHelpVisible(false)
+              setIsScoreTableVisible((current) => !current)
+            }}
           >
             {isScoreTableVisible ? '点数表を閉じる' : '点数表'}
           </button>
@@ -2866,6 +3199,17 @@ function App() {
           </div>
         ) : null}
       </section>
+
+      <button
+        type="button"
+        className={`rule-help-fab ${isRuleHelpVisible ? 'active' : ''}`}
+        onClick={openRuleHelp}
+        aria-haspopup="dialog"
+        aria-expanded={isRuleHelpVisible}
+        aria-controls="rule-help-panel"
+      >
+        札/役ガイド
+      </button>
 
       {isMatchSurfaceVisible ? (
         <section className={`table-layout ${useMobileViewLayout ? 'mobile' : ''}`}>
@@ -3184,6 +3528,86 @@ function App() {
         </section>
       ) : null}
 
+      {isRuleHelpVisible && currentRuleHelpPage ? (
+        <section className="rule-help-overlay" role="presentation" onClick={closeRuleHelp}>
+          <section
+            id="rule-help-panel"
+            className="rule-help-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label="札と役ガイド"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="rule-help-panel-head">
+              <div className="rule-help-panel-title">
+                <h2>札/役ガイド</h2>
+                <p>
+                  {ruleHelpPageIndex + 1}/{ruleHelpPages.length} {currentRuleHelpPage.subtitle}
+                </p>
+              </div>
+              <button type="button" className="score-table-close-button" onClick={closeRuleHelp}>
+                閉じる
+              </button>
+            </div>
+
+            <div
+              className="rule-help-carousel"
+              onPointerDown={handleRuleHelpPointerDown}
+              onPointerUp={handleRuleHelpPointerUp}
+              onPointerCancel={handleRuleHelpPointerCancel}
+            >
+              <div
+                className="rule-help-track"
+                style={{ transform: `translateX(-${ruleHelpPageIndex * 100}%)` }}
+              >
+                {ruleHelpPages.map((page) => (
+                  <article
+                    key={page.key}
+                    className="rule-help-page"
+                    aria-hidden={page.key !== currentRuleHelpPage.key}
+                  >
+                    <h3>{page.title}</h3>
+                    <div className="rule-help-page-body">
+                      {page.content}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+
+            <div className="rule-help-nav">
+              <button
+                type="button"
+                className="rule-help-nav-button"
+                onClick={goToPreviousRuleHelpPage}
+                disabled={isRuleHelpFirstPage}
+              >
+                前へ
+              </button>
+              <div className="rule-help-dot-row" aria-label="ガイドページ">
+                {ruleHelpPages.map((page, index) => (
+                  <button
+                    key={page.key}
+                    type="button"
+                    className={`rule-help-dot ${index === ruleHelpPageIndex ? 'active' : ''}`}
+                    onClick={() => goToRuleHelpPage(index)}
+                    aria-label={`${index + 1}ページ目へ`}
+                  />
+                ))}
+              </div>
+              <button
+                type="button"
+                className="rule-help-nav-button"
+                onClick={goToNextRuleHelpPage}
+                disabled={isRuleHelpLastPage}
+              >
+                次へ
+              </button>
+            </div>
+          </section>
+        </section>
+      ) : null}
+
       <YakuDropEffect cards={dropCards} />
       <AnimatePresence>
         {turnBanner ? (
@@ -3288,7 +3712,7 @@ function App() {
       {game.phase === 'koikoiDecision' && !isAiTurn ? (
         <RoundOverlay
           title="役がそろいました"
-          message={`現在 ${getYakuTotalPoints(activePlayer.completedYaku)}文。新規役:`}
+          message={`現在 ${getYakuTotalPoints(activePlayer.completedYaku)}点。新規役:`}
           messageLines={koikoiDecisionYakuLines}
           primaryActionLabel="ここで上がる"
           onPrimaryAction={() => executeTurnCommand({ type: 'resolveKoiKoi', decision: 'stop' })}
@@ -3302,7 +3726,7 @@ function App() {
           title="月が終了しました"
           message={
             game.roundWinner
-              ? `${game.roundWinner === humanPlayer.id ? 'あなた' : '相手'}の勝利。${game.roundPoints}文を獲得しました。`
+              ? `${game.roundWinner === humanPlayer.id ? 'あなた' : '相手'}の勝利。${game.roundPoints}点を獲得しました。`
               : 'この月は引き分けです。'
           }
           messageLines={roundPointBreakdownLines}

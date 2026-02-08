@@ -36,7 +36,7 @@ export function formatYaku(yaku: readonly Yaku[]): string {
   if (yaku.length === 0) {
     return 'なし'
   }
-  return yaku.map((item) => `${item.name} (${item.points}文)`).join(' / ')
+  return yaku.map((item) => `${item.name} (${item.points}点)`).join(' / ')
 }
 
 export function flattenNewYakuCards(yaku: readonly Yaku[]): HanafudaCard[] {
@@ -438,7 +438,7 @@ export function getPhaseMessage(game: KoiKoiGameState, isAiTurn: boolean): strin
       return isAiTurn ? 'COMがこいこい判断中' : 'こいこい or 上がりを選択'
     case 'roundEnd':
       return game.roundWinner
-        ? `${game.roundWinner === 'player1' ? 'あなた' : 'COM'}が ${game.roundPoints}文 獲得`
+        ? `${game.roundWinner === 'player1' ? 'あなた' : 'COM'}が ${game.roundPoints}点 獲得`
         : 'この月は引き分け'
     case 'gameOver':
       return game.winner

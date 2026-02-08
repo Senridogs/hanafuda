@@ -1,6 +1,6 @@
 import type { HanafudaCard } from './types'
-import type { KoiKoiDecision, KoiKoiGameState } from './game'
-import { getMatchingFieldCards } from './game'
+import type { CpuRoundMood, KoiKoiDecision, KoiKoiGameState } from './game'
+import { getMatchingFieldCards, resolveDifficultyRoundMood } from './game'
 import { HANAFUDA_CARDS } from './cards'
 import { calculateYaku, getYakuTotalPoints } from './yaku'
 
@@ -33,6 +33,10 @@ interface SearchProfile {
   readonly drawExpectationWeight: number
   readonly fieldRiskWeight: number
   readonly opponentThreatWeight: number
+  readonly opponentReplyWeight: number
+  readonly opponentReplySamples: number
+  readonly twoPlyWeight: number
+  readonly reboundWeight: number
   readonly handPotentialWeight: number
   readonly topN: number
 }
@@ -44,29 +48,41 @@ const TSUYOI_PROFILE: SearchProfile = {
   drawExpectationWeight: 0.67,
   fieldRiskWeight: 0.19,
   opponentThreatWeight: 0.13,
+  opponentReplyWeight: 0.12,
+  opponentReplySamples: 10,
+  twoPlyWeight: 0.11,
+  reboundWeight: 0.54,
   handPotentialWeight: 0.29,
-  topN: 1,
+  topN: 2,
 }
 
 const YABAI_PROFILE: SearchProfile = {
-  drawSamples: 8,
-  immediateProgressWeight: 1.05,
-  immediateCaptureWeight: 2.2,
-  drawExpectationWeight: 0.72,
-  fieldRiskWeight: 0.2,
-  opponentThreatWeight: 0.14,
-  handPotentialWeight: 0.3,
+  drawSamples: Number.MAX_SAFE_INTEGER,
+  immediateProgressWeight: 1.16,
+  immediateCaptureWeight: 2.75,
+  drawExpectationWeight: 1.25,
+  fieldRiskWeight: 0.44,
+  opponentThreatWeight: 0.38,
+  opponentReplyWeight: 0.42,
+  opponentReplySamples: 18,
+  twoPlyWeight: 0.34,
+  reboundWeight: 0.68,
+  handPotentialWeight: 0.56,
   topN: 1,
 }
 
 const ONI_PROFILE: SearchProfile = {
-  drawSamples: 8,
-  immediateProgressWeight: 1.04,
-  immediateCaptureWeight: 2.08,
-  drawExpectationWeight: 0.62,
-  fieldRiskWeight: 0.18,
-  opponentThreatWeight: 0.12,
-  handPotentialWeight: 0.28,
+  drawSamples: Number.MAX_SAFE_INTEGER,
+  immediateProgressWeight: 1.16,
+  immediateCaptureWeight: 2.75,
+  drawExpectationWeight: 1.25,
+  fieldRiskWeight: 0.44,
+  opponentThreatWeight: 0.38,
+  opponentReplyWeight: 0.42,
+  opponentReplySamples: 18,
+  twoPlyWeight: 0.34,
+  reboundWeight: 0.68,
+  handPotentialWeight: 0.56,
   topN: 1,
 }
 
@@ -77,6 +93,10 @@ const KAMI_PROFILE: SearchProfile = {
   drawExpectationWeight: 1.25,
   fieldRiskWeight: 0.44,
   opponentThreatWeight: 0.38,
+  opponentReplyWeight: 0.42,
+  opponentReplySamples: 18,
+  twoPlyWeight: 0.34,
+  reboundWeight: 0.68,
   handPotentialWeight: 0.56,
   topN: 1,
 }
@@ -326,6 +346,172 @@ function simulateCapture(
   }
 }
 
+function simulateBestImmediateHandCapture(
+  field: readonly HanafudaCard[],
+  capturedBase: readonly HanafudaCard[],
+  handCard: HanafudaCard,
+): { capturedNow: readonly HanafudaCard[]; capturedAfter: readonly HanafudaCard[]; fieldAfter: readonly HanafudaCard[] } {
+  const matches = getMatchingFieldCards(handCard, field)
+  if (matches.length === 0) {
+    return simulateCapture(field, capturedBase, handCard, [])
+  }
+  if (matches.length === 3) {
+    return simulateCapture(field, capturedBase, handCard, matches)
+  }
+  if (matches.length === 1) {
+    const only = matches[0]
+    return only ? simulateCapture(field, capturedBase, handCard, [only]) : simulateCapture(field, capturedBase, handCard, [])
+  }
+
+  let bestOutcome = simulateCapture(field, capturedBase, handCard, [matches[0] as HanafudaCard])
+  let bestScore = evaluateCapturedStrength(bestOutcome.capturedAfter)
+    + bestOutcome.capturedNow.reduce((sum, card) => sum + tacticalCardValue(card), 0)
+  for (let i = 1; i < matches.length; i += 1) {
+    const matched = matches[i]
+    if (!matched) {
+      continue
+    }
+    const simulated = simulateCapture(field, capturedBase, handCard, [matched])
+    const score = evaluateCapturedStrength(simulated.capturedAfter)
+      + simulated.capturedNow.reduce((sum, card) => sum + tacticalCardValue(card), 0)
+    if (score > bestScore) {
+      bestOutcome = simulated
+      bestScore = score
+    }
+  }
+  return bestOutcome
+}
+
+function evaluateImmediateCaptureGain(
+  capturedBaseScore: number,
+  baselineDanger: number,
+  simulated: { capturedNow: readonly HanafudaCard[]; capturedAfter: readonly HanafudaCard[]; fieldAfter: readonly HanafudaCard[] },
+): number {
+  const capturedDelta = evaluateCapturedStrength(simulated.capturedAfter) - capturedBaseScore
+  const cardGain = simulated.capturedNow.reduce((sum, card) => sum + tacticalCardValue(card), 0)
+  const dangerRelief = baselineDanger - evaluateFieldDanger(simulated.fieldAfter)
+  return capturedDelta + cardGain * 1.1 + dangerRelief * 0.35
+}
+
+function estimateOwnBestNextReplyGain(
+  ownRemainingHand: readonly HanafudaCard[],
+  fieldAfterOpponent: readonly HanafudaCard[],
+  ownCapturedAfter: readonly HanafudaCard[],
+): number {
+  if (ownRemainingHand.length === 0) {
+    return 0
+  }
+
+  const ownCapturedBase = evaluateCapturedStrength(ownCapturedAfter)
+  const ownDangerBase = evaluateFieldDanger(fieldAfterOpponent)
+  let bestGain = 0
+  for (const ownCard of ownRemainingHand) {
+    const simulated = simulateBestImmediateHandCapture(fieldAfterOpponent, ownCapturedAfter, ownCard)
+    const gain = evaluateImmediateCaptureGain(ownCapturedBase, ownDangerBase, simulated)
+    if (gain > bestGain) {
+      bestGain = gain
+    }
+  }
+  return bestGain
+}
+
+function estimateOpponentBestReplyPressure(
+  state: KoiKoiGameState,
+  fieldAfterOwn: readonly HanafudaCard[],
+  opponentReplyCandidates: readonly HanafudaCard[],
+  profile: SearchProfile,
+): number {
+  const aiIndex = state.currentPlayerIndex
+  const opponentIndex: 0 | 1 = aiIndex === 0 ? 1 : 0
+  const opponent = state.players[opponentIndex]
+  if (opponent.hand.length === 0 || opponentReplyCandidates.length === 0 || profile.opponentReplySamples <= 0) {
+    return 0
+  }
+
+  const sampledCandidates = sampleCards(
+    opponentReplyCandidates,
+    Math.min(opponentReplyCandidates.length, profile.opponentReplySamples),
+  )
+  if (sampledCandidates.length === 0) {
+    return 0
+  }
+
+  const oppBaseScore = evaluateCapturedStrength(opponent.captured)
+  const baselineFieldDanger = evaluateFieldDanger(fieldAfterOwn)
+  let worstCasePressure = 0
+  let totalPressure = 0
+  let sampledCount = 0
+
+  for (const oppCard of sampledCandidates) {
+    const simulated = simulateBestImmediateHandCapture(fieldAfterOwn, opponent.captured, oppCard)
+    const oppImmediateGain = evaluateImmediateCaptureGain(oppBaseScore, baselineFieldDanger, simulated)
+    const oppStopPoints = estimateStopPointsFromCaptured(simulated.capturedAfter, state.koikoiCounts[aiIndex] > 0)
+    const pressure = oppImmediateGain + oppStopPoints * 10
+
+    if (pressure > worstCasePressure) {
+      worstCasePressure = pressure
+    }
+    totalPressure += pressure
+    sampledCount += 1
+  }
+
+  if (sampledCount === 0) {
+    return 0
+  }
+  const averagePressure = totalPressure / sampledCount
+  return worstCasePressure * 0.7 + averagePressure * 0.3
+}
+
+function estimateTwoPlyPressure(
+  state: KoiKoiGameState,
+  fieldAfterOwn: readonly HanafudaCard[],
+  ownCapturedAfter: readonly HanafudaCard[],
+  ownRemainingHand: readonly HanafudaCard[],
+  opponentReplyCandidates: readonly HanafudaCard[],
+  profile: SearchProfile,
+): number {
+  const aiIndex = state.currentPlayerIndex
+  const opponentIndex: 0 | 1 = aiIndex === 0 ? 1 : 0
+  const opponent = state.players[opponentIndex]
+  if (opponent.hand.length === 0 || opponentReplyCandidates.length === 0 || profile.opponentReplySamples <= 0) {
+    return 0
+  }
+
+  const sampledCandidates = sampleCards(
+    opponentReplyCandidates,
+    Math.min(opponentReplyCandidates.length, profile.opponentReplySamples),
+  )
+  if (sampledCandidates.length === 0) {
+    return 0
+  }
+
+  const oppBaseScore = evaluateCapturedStrength(opponent.captured)
+  const baselineFieldDanger = evaluateFieldDanger(fieldAfterOwn)
+  let worstCaseSwing = 0
+  let totalSwing = 0
+  let sampledCount = 0
+
+  for (const oppCard of sampledCandidates) {
+    const simulated = simulateBestImmediateHandCapture(fieldAfterOwn, opponent.captured, oppCard)
+    const oppImmediateGain = evaluateImmediateCaptureGain(oppBaseScore, baselineFieldDanger, simulated)
+    const oppStopPoints = estimateStopPointsFromCaptured(simulated.capturedAfter, state.koikoiCounts[aiIndex] > 0)
+    const ownBestReplyGain = estimateOwnBestNextReplyGain(ownRemainingHand, simulated.fieldAfter, ownCapturedAfter)
+    const swing = oppImmediateGain + oppStopPoints * 10 - ownBestReplyGain * profile.reboundWeight
+
+    if (swing > worstCaseSwing) {
+      worstCaseSwing = swing
+    }
+    totalSwing += swing
+    sampledCount += 1
+  }
+
+  if (sampledCount === 0) {
+    return 0
+  }
+  const averageSwing = totalSwing / sampledCount
+  return worstCaseSwing * 0.7 + averageSwing * 0.3
+}
+
 function enumerateHandStepOutcomes(state: KoiKoiGameState, handCard: HanafudaCard): HandStepOutcome[] {
   const aiPlayer = state.players[state.currentPlayerIndex]
   const matches = getMatchingFieldCards(handCard, state.field)
@@ -424,6 +610,20 @@ function evaluateHandOutcome(
   const drawExpectation = estimateDrawExpectation(drawCandidates, outcome.fieldAfter, outcome.capturedAfter, profile)
   const fieldRisk = evaluateFieldDanger(outcome.fieldAfter)
   const opponentThreat = estimateOpponentCaptureThreat(outcome.fieldAfter, drawCandidates)
+  const opponentReplyPressure = estimateOpponentBestReplyPressure(
+    state,
+    outcome.fieldAfter,
+    drawCandidates,
+    profile,
+  )
+  const twoPlyPressure = estimateTwoPlyPressure(
+    state,
+    outcome.fieldAfter,
+    outcome.capturedAfter,
+    remainingHand,
+    drawCandidates,
+    profile,
+  )
   const stopPoints = estimateStopPointsFromCaptured(
     outcome.capturedAfter,
     state.koikoiCounts[state.currentPlayerIndex === 0 ? 1 : 0] > 0,
@@ -437,6 +637,8 @@ function evaluateHandOutcome(
     + stopPotential
     - fieldRisk * profile.fieldRiskWeight
     - opponentThreat * profile.opponentThreatWeight
+    - opponentReplyPressure * profile.opponentReplyWeight
+    - twoPlyPressure * profile.twoPlyWeight
 }
 
 function chooseByProfile(state: KoiKoiGameState, profile: SearchProfile): HanafudaCard | null {
@@ -578,6 +780,20 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
   const fieldRisk = evaluateFieldDanger(simulated.fieldAfter)
   const drawCandidates = buildUnknownDrawCandidates(state, aiPlayer.hand, simulated.fieldAfter, simulated.capturedAfter)
   const opponentThreat = estimateOpponentCaptureThreat(simulated.fieldAfter, drawCandidates)
+  const opponentReplyPressure = estimateOpponentBestReplyPressure(
+    state,
+    simulated.fieldAfter,
+    drawCandidates,
+    profile,
+  )
+  const twoPlyPressure = estimateTwoPlyPressure(
+    state,
+    simulated.fieldAfter,
+    simulated.capturedAfter,
+    aiPlayer.hand,
+    drawCandidates,
+    profile,
+  )
   const stopPoints = estimateStopPointsFromCaptured(
     simulated.capturedAfter,
     state.koikoiCounts[state.currentPlayerIndex === 0 ? 1 : 0] > 0,
@@ -589,6 +805,8 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
     + stopPotential
     - fieldRisk * profile.fieldRiskWeight
     - opponentThreat * profile.opponentThreatWeight
+    - opponentReplyPressure * profile.opponentReplyWeight
+    - twoPlyPressure * profile.twoPlyWeight
 
   if (state.pendingSource === 'hand') {
     const handPotential = evaluateFutureHandPotential(aiPlayer.hand, simulated.fieldAfter)
@@ -683,6 +901,25 @@ function estimateStopRoundPoints(state: KoiKoiGameState, playerIndex: 0 | 1): nu
   return basePoints * multiplier
 }
 
+function resolveAiRoundMood(state: KoiKoiGameState): CpuRoundMood {
+  const playerIndex = state.currentPlayerIndex
+  const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
+  const player = state.players[playerIndex]
+  const opponent = state.players[opponentIndex]
+  const strategyDifficulty = state.config.aiDifficulty === 'yabai'
+    || state.config.aiDifficulty === 'oni'
+    || state.config.aiDifficulty === 'kami'
+    ? 'kami'
+    : state.config.aiDifficulty
+  return resolveDifficultyRoundMood(
+    strategyDifficulty,
+    state.round,
+    state.config.maxRounds,
+    player.score,
+    opponent.score,
+  )
+}
+
 function chooseKoiKoi_Yowai(): KoiKoiDecision {
   return 'koikoi'
 }
@@ -707,71 +944,80 @@ function chooseKoiKoi_Futsuu(state: KoiKoiGameState): KoiKoiDecision {
 }
 
 function chooseKoiKoi_Tsuyoi(state: KoiKoiGameState): KoiKoiDecision {
-  return chooseKoiKoi_Yabai(state)
+  return chooseKoiKoi_TsuyoiAdvanced(state)
 }
 
-function chooseKoiKoi_Yabai(state: KoiKoiGameState): KoiKoiDecision {
-  const player = state.players[state.currentPlayerIndex]
-  const opponent = state.players[1 - state.currentPlayerIndex]
-  const currentRoundPoints = getYakuTotalPoints(player.completedYaku)
-
-  if (player.score + currentRoundPoints >= state.config.targetScore) {
-    return 'stop'
-  }
-  if (state.koikoiCounts[state.currentPlayerIndex] >= 1) {
-    return 'stop'
-  }
-  if (opponent.score > player.score + 25 && currentRoundPoints < 10) {
-    return 'koikoi'
-  }
-  if (player.score >= opponent.score && currentRoundPoints >= 7) {
-    return 'stop'
-  }
-  if (state.round >= state.config.maxRounds) {
-    return player.score + currentRoundPoints >= opponent.score ? 'stop' : 'koikoi'
-  }
-  return currentRoundPoints >= 6 ? 'stop' : 'koikoi'
-}
-
-function chooseKoiKoi_Oni(state: KoiKoiGameState): KoiKoiDecision {
+function chooseKoiKoi_TsuyoiAdvanced(state: KoiKoiGameState): KoiKoiDecision {
   const playerIndex = state.currentPlayerIndex
   const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
   const player = state.players[playerIndex]
   const opponent = state.players[opponentIndex]
-
-  const currentRoundPoints = getYakuTotalPoints(player.completedYaku)
+  const mood = resolveAiRoundMood(state)
   const stopPoints = estimateStopRoundPoints(state, playerIndex)
   const stopTotal = player.score + stopPoints
   const leadIfStop = stopTotal - opponent.score
+  const turnsLeft = Math.max(0, player.hand.length)
+  const opponentStopPressure = estimateStopRoundPoints(state, opponentIndex)
 
   if (stopTotal >= state.config.targetScore) {
     return 'stop'
   }
   if (state.round >= state.config.maxRounds) {
-    return leadIfStop > 0 ? 'stop' : 'koikoi'
-  }
-  if (state.koikoiCounts[playerIndex] >= 2) {
-    return 'stop'
-  }
-  if (stopPoints >= 8) {
-    return 'stop'
-  }
-  if (leadIfStop >= 12 && stopPoints >= 4) {
-    return 'stop'
+    return leadIfStop >= 0 ? 'stop' : 'koikoi'
   }
 
-  const deficit = opponent.score - player.score
-  if (deficit >= 14) {
+  if (mood === 'cold') {
+    if (stopPoints >= 2) {
+      return 'stop'
+    }
+    if (opponentStopPressure >= 4 && stopPoints >= 1) {
+      return 'stop'
+    }
+  }
+
+  if (
+    mood === 'hot'
+    && state.koikoiCounts[playerIndex] === 0
+    && turnsLeft >= 2
+    && stopPoints <= 5
+    && opponentStopPressure < 7
+  ) {
     return 'koikoi'
   }
 
-  const turnsLeft = Math.max(0, player.hand.length)
-  const expectedGain = 1.6 + turnsLeft * 0.55 + Math.max(0, deficit) * 0.09
-  const riskPenalty = stopPoints * (0.58 + turnsLeft * 0.06 + (state.koikoiCounts[opponentIndex] > 0 ? 0.18 : 0))
+  if (
+    mood !== 'cold'
+    && state.koikoiCounts[playerIndex] === 0
+    && turnsLeft >= 3
+    && stopPoints <= 4
+    && leadIfStop < 12
+    && opponentStopPressure < 8
+  ) {
+    return 'koikoi'
+  }
 
-  const stopUtility = leadIfStop
-  const koikoiUtility = player.score + currentRoundPoints + expectedGain - riskPenalty - opponent.score
-  return koikoiUtility > stopUtility ? 'koikoi' : 'stop'
+  const maxKoiKoi = mood === 'hot' ? 2 : 1
+  if (state.koikoiCounts[playerIndex] >= maxKoiKoi) {
+    return 'stop'
+  }
+
+  if (opponent.score > player.score + (mood === 'hot' ? 30 : 22) && stopPoints < 10) {
+    return 'koikoi'
+  }
+
+  if (leadIfStop >= (mood === 'cold' ? 4 : 8) && stopPoints >= (mood === 'cold' ? 2 : 4)) {
+    return 'stop'
+  }
+
+  return stopPoints >= (mood === 'hot' ? 7 : 6) ? 'stop' : 'koikoi'
+}
+
+function chooseKoiKoi_Yabai(state: KoiKoiGameState): KoiKoiDecision {
+  return chooseKoiKoi_Kami(state)
+}
+
+function chooseKoiKoi_Oni(state: KoiKoiGameState): KoiKoiDecision {
+  return chooseKoiKoi_Kami(state)
 }
 
 function chooseKoiKoi_Kami(state: KoiKoiGameState): KoiKoiDecision {
@@ -779,6 +1025,8 @@ function chooseKoiKoi_Kami(state: KoiKoiGameState): KoiKoiDecision {
   const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
   const player = state.players[playerIndex]
   const opponent = state.players[opponentIndex]
+  const mood = resolveAiRoundMood(state)
+  const moodAggression = mood === 'hot' ? 1 : mood === 'cold' ? -1 : 0
 
   const currentRoundPoints = getYakuTotalPoints(player.completedYaku)
   const stopPoints = estimateStopRoundPoints(state, playerIndex)
@@ -792,7 +1040,8 @@ function chooseKoiKoi_Kami(state: KoiKoiGameState): KoiKoiDecision {
     return leadIfStop > 0 ? 'stop' : 'koikoi'
   }
 
-  if (state.koikoiCounts[playerIndex] >= 2) {
+  const maxKoiKoi = mood === 'cold' ? 1 : 2
+  if (state.koikoiCounts[playerIndex] >= maxKoiKoi) {
     return 'stop'
   }
   if (state.koikoiCounts[playerIndex] >= 1 && stopPoints >= 2) {
@@ -802,34 +1051,63 @@ function chooseKoiKoi_Kami(state: KoiKoiGameState): KoiKoiDecision {
     return 'stop'
   }
 
-  if (stopPoints >= 8) {
+  if (mood === 'cold' && stopPoints >= 2) {
     return 'stop'
   }
-  if (leadIfStop >= 18 && stopPoints >= 3) {
+
+  if (stopPoints >= (mood === 'hot' ? 9 : 7)) {
     return 'stop'
   }
-  if (leadIfStop >= 8 && stopPoints >= 5) {
+  if (leadIfStop >= (mood === 'hot' ? 20 : 14) && stopPoints >= 3) {
+    return 'stop'
+  }
+  if (leadIfStop >= (mood === 'hot' ? 10 : 6) && stopPoints >= 5) {
     return 'stop'
   }
 
   const deficit = opponent.score - player.score
-  if (deficit >= 16) {
+  if (deficit >= (mood === 'hot' ? 14 : 16)) {
     return 'koikoi'
   }
 
   const turnsLeft = Math.max(0, player.hand.length)
-  if (leadIfStop >= 4 && stopPoints >= 2 && turnsLeft <= 3) {
+  if (
+    mood !== 'cold'
+    && state.koikoiCounts[playerIndex] === 0
+    && turnsLeft >= 3
+    && stopPoints <= 4
+    && leadIfStop < 16
+    && estimateStopRoundPoints(state, opponentIndex) < 9
+  ) {
+    return 'koikoi'
+  }
+  if (leadIfStop >= (mood === 'hot' ? 5 : 3) && stopPoints >= 2 && turnsLeft <= 3) {
     return 'stop'
   }
   if (turnsLeft <= 1 && stopPoints >= 2) {
     return 'stop'
   }
 
+  if (
+    mood === 'hot'
+    && state.koikoiCounts[playerIndex] === 0
+    && turnsLeft >= 2
+    && stopPoints <= 6
+    && estimateStopRoundPoints(state, opponentIndex) < 8
+  ) {
+    return 'koikoi'
+  }
+
   const ownPotential = evaluateCapturedStrength(player.captured)
   const oppPotential = evaluateCapturedStrength(opponent.captured)
-  const expectedGain = 1.6 + turnsLeft * 0.58 + Math.max(0, deficit) * 0.1 + Math.max(0, ownPotential - oppPotential) * 0.0006
-  const riskPenalty = stopPoints * (0.78 + turnsLeft * 0.08 + (state.koikoiCounts[opponentIndex] > 0 ? 0.32 : 0))
+  const expectedGain = 1.6
+    + turnsLeft * 0.58
+    + Math.max(0, deficit) * 0.1
+    + Math.max(0, ownPotential - oppPotential) * 0.0006
+    + moodAggression * 0.9
+  const riskPenaltyBase = stopPoints * (0.78 + turnsLeft * 0.08 + (state.koikoiCounts[opponentIndex] > 0 ? 0.32 : 0))
     + Math.max(0, oppPotential - ownPotential) * 0.0012
+  const riskPenalty = riskPenaltyBase * (mood === 'hot' ? 0.85 : mood === 'cold' ? 1.24 : 1)
 
   const stopUtility = leadIfStop
   const koikoiUtility = player.score + currentRoundPoints + expectedGain - riskPenalty - opponent.score

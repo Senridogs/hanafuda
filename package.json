@@ -10,7 +10,11 @@
     "package:portable": "npm run build && node scripts/package-portable.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ai:lab": "node scripts/run-ai-lab.mjs",
+    "ai:ladder": "npm run ai:lab -- ladder",
+    "ai:yaku": "npm run ai:lab -- yaku",
+    "ai:ablation": "npm run ai:lab -- ablation"
   },
   "dependencies": {
     "framer-motion": "^12.33.0",
