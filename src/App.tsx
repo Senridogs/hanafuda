@@ -63,6 +63,10 @@ type CardMoveEffect = {
   viaY?: number
   viaWidth?: number
   viaHeight?: number
+  via2X?: number
+  via2Y?: number
+  via2Width?: number
+  via2Height?: number
   duration?: number
   toWidth?: number
   toHeight?: number
@@ -72,6 +76,7 @@ type CardMoveEffect = {
   hideFieldCardId?: string
   flipFromBack?: boolean
   flipHoldRatio?: number
+  flipOnArrival?: boolean
   addToFieldHistoryLength?: number
   fromDeck?: boolean
 }
@@ -80,6 +85,7 @@ type TurnDecisionCallout = {
   id: number
   kind: 'koikoi' | 'stop'
   text: string
+  durationMs: number
 }
 
 type HandDragState = {
@@ -99,6 +105,11 @@ const CARD_MOVE_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1]
 const CARD_HEIGHT_PER_WIDTH = 839 / 512
 const CAPTURE_STACK_CARD_WIDTH = 34
 const CAPTURE_STACK_OVERLAP_BASE = 0.62
+const STAGED_CAPTURE_DURATION = 2.56
+const STAGED_CAPTURE_STOP_TIME = 0.36
+const STAGED_CAPTURE_FLIP_END_TIME = 0.56
+const STAGED_CAPTURE_MERGE_TIME = 0.75
+const STAGED_ADD_TO_FIELD_DURATION = 2
 const ROUND_COUNT_OPTIONS = [3, 6, 12] as const
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 720px)'
 const FLICK_MIN_DISTANCE_PX = 38
@@ -108,8 +119,10 @@ const TAP_MAX_DISTANCE_PX = 10
 const TAP_MAX_DURATION_MS = 300
 const FIELD_EMPTY_SLOT_TARGET_ID = '__field-empty-slot__'
 const EXPANDED_SELECTION_CANCEL_PULSE_MS = 120
+const KOIKOI_DECISION_EXTRA_DELAY_MS = 2000
+const AI_KOIKOI_DECISION_DELAY_MS = AI_THINK_DELAY_MS + KOIKOI_DECISION_EXTRA_DELAY_MS
 const TURN_DECISION_EFFECT_DURATION_MS = 2400
-const TURN_DECISION_EFFECT_DURATION_SECONDS = TURN_DECISION_EFFECT_DURATION_MS / 1000
+const OPPONENT_KOIKOI_EFFECT_DURATION_MS = TURN_DECISION_EFFECT_DURATION_MS * 2
 const TURN_BANNER_AFTER_KOIKOI_DELAY_MS = TURN_DECISION_EFFECT_DURATION_MS + 140
 const PC_YAKU_LIGHT_KEYS = new Set(['goko', 'shiko', 'ame-shiko', 'sanko'])
 const PC_YAKU_TANE_KEYS = new Set(['tane', 'inoshikacho', 'hanami-zake', 'tsukimi-zake'])
@@ -713,38 +726,42 @@ function TurnDecisionEffect(props: {
 
   return (
     <AnimatePresence>
-      {callouts.map((callout) => (
-        <motion.div
-          key={callout.id}
-          className="turn-callout-layer"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
+      {callouts.map((callout) => {
+        const calloutDurationSeconds = callout.durationMs / 1000
+        return (
           <motion.div
-            className={`turn-callout-burst ${callout.kind}`}
-            initial={{ y: 56, scale: 0.72, opacity: 0 }}
-            animate={{ y: [56, 0, 0, -24], scale: [0.72, 1.08, 1.02, 1], opacity: [0, 1, 1, 0] }}
-            transition={{
-              duration: TURN_DECISION_EFFECT_DURATION_SECONDS,
-              times: [0, 0.16, 0.82, 1],
-              ease: [0.22, 1, 0.36, 1],
-            }}
-            onAnimationComplete={() => onFinish(callout.id)}
+            key={callout.id}
+            className="turn-callout-layer"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
           >
-            <span className="turn-callout-radiance" aria-hidden="true" />
-            <span className="turn-callout-flash" aria-hidden="true" />
-            <span className="turn-callout-ring outer" aria-hidden="true" />
-            <span className="turn-callout-ring inner" aria-hidden="true" />
-            <div className="turn-callout-sparks" aria-hidden="true">
-              {TURN_DECISION_SPARK_INDICES.map((sparkIndex) => (
-                <span key={`${callout.id}-${sparkIndex}`} />
-              ))}
-            </div>
-            <p className={`turn-callout ${callout.kind}`}>{callout.text}</p>
+            <motion.div
+              className={`turn-callout-burst ${callout.kind}`}
+              style={{ '--callout-burst-duration': `${calloutDurationSeconds}s` } as CSSProperties}
+              initial={{ y: 56, scale: 0.72, opacity: 0 }}
+              animate={{ y: [56, 0, 0, -24], scale: [0.72, 1.08, 1.02, 1], opacity: [0, 1, 1, 0] }}
+              transition={{
+                duration: calloutDurationSeconds,
+                times: [0, 0.16, 0.82, 1],
+                ease: [0.22, 1, 0.36, 1],
+              }}
+              onAnimationComplete={() => onFinish(callout.id)}
+            >
+              <span className="turn-callout-radiance" aria-hidden="true" />
+              <span className="turn-callout-flash" aria-hidden="true" />
+              <span className="turn-callout-ring outer" aria-hidden="true" />
+              <span className="turn-callout-ring inner" aria-hidden="true" />
+              <div className="turn-callout-sparks" aria-hidden="true">
+                {TURN_DECISION_SPARK_INDICES.map((sparkIndex) => (
+                  <span key={`${callout.id}-${sparkIndex}`} />
+                ))}
+              </div>
+              <p className={`turn-callout ${callout.kind}`}>{callout.text}</p>
+            </motion.div>
           </motion.div>
-        </motion.div>
-      ))}
+        )
+      })}
     </AnimatePresence>
   )
 }
@@ -759,62 +776,131 @@ function CardMoveOverlayEffect(props: {
     <AnimatePresence>
       {effects.map((effect) => {
         const hasVia = effect.viaX !== undefined && effect.viaY !== undefined
+        const hasVia2 = effect.via2X !== undefined && effect.via2Y !== undefined
         const viaX = effect.viaX ?? effect.toX
         const viaY = effect.viaY ?? effect.toY
         const viaWidth = effect.viaWidth ?? effect.width
         const viaHeight = effect.viaHeight ?? effect.height
-        const hold = Math.min(Math.max(effect.flipHoldRatio ?? 0, 0), 0.62)
+        const via2X = effect.via2X ?? viaX
+        const via2Y = effect.via2Y ?? viaY
+        const via2Width = effect.via2Width ?? viaWidth
+        const via2Height = effect.via2Height ?? viaHeight
+        const useStagedCapture = effect.flipOnArrival === true
+        const flipOnArrival = effect.flipFromBack && useStagedCapture
+        const hold = useStagedCapture ? 0 : Math.min(Math.max(effect.flipHoldRatio ?? 0, 0), 0.62)
         const baseMoveDuration = effect.duration ?? 1.64
         const totalDuration = hold > 0 ? baseMoveDuration / (1 - hold) : baseMoveDuration
-        const viaTime = hold + (1 - hold) * 0.45
-        const floatTimes = hold > 0 ? [0, hold, hold + (1 - hold) * 0.46, 1] : [0, 0.72, 1]
-        const floatScaleFrames = hold > 0 ? [1, 1, 1.015, 1] : [1, 1.015, 1]
-        const flipTurnTime = hold > 0 ? Math.max(0.18, hold - 0.06) : 0.38
-        const flipTimes = hold > 0
-          ? [0, flipTurnTime, hold, 1]
-          : [0, 0.2, 0.4, 1]
-        const xFrames = hasVia
-          ? hold > 0
-            ? [0, 0, viaX - effect.fromX, effect.toX - effect.fromX]
-            : [0, viaX - effect.fromX, effect.toX - effect.fromX]
-          : hold > 0
-            ? [0, 0, effect.toX - effect.fromX]
-            : [0, effect.toX - effect.fromX]
-        const yFrames = hasVia
-          ? hold > 0
-            ? [0, 0, viaY - effect.fromY, effect.toY - effect.fromY]
-            : [0, viaY - effect.fromY, effect.toY - effect.fromY]
-          : hold > 0
-            ? [0, 0, effect.toY - effect.fromY]
-            : [0, effect.toY - effect.fromY]
-        const rotateFrames = hasVia
-          ? hold > 0
-            ? [effect.rotateStart ?? -4, effect.rotateStart ?? -4, 0, effect.rotateEnd ?? 0]
-            : [effect.rotateStart ?? -4, 0, effect.rotateEnd ?? 0]
-          : hold > 0
-            ? [effect.rotateStart ?? -4, effect.rotateStart ?? -4, effect.rotateEnd ?? 0]
-            : [effect.rotateStart ?? -4, effect.rotateEnd ?? 0]
-        const widthFrames = hasVia
-          ? hold > 0
-            ? [effect.width, effect.width, viaWidth, effect.toWidth ?? viaWidth]
-            : [effect.width, viaWidth, effect.toWidth ?? viaWidth]
-          : hold > 0
-            ? [effect.width, effect.width, effect.toWidth ?? effect.width]
-            : [effect.width, effect.toWidth ?? effect.width]
-        const heightFrames = hasVia
-          ? hold > 0
-            ? [effect.height, effect.height, viaHeight, effect.toHeight ?? viaHeight]
-            : [effect.height, viaHeight, effect.toHeight ?? viaHeight]
-          : hold > 0
-            ? [effect.height, effect.height, effect.toHeight ?? effect.height]
-            : [effect.height, effect.toHeight ?? effect.height]
-        const times = hasVia
-          ? hold > 0
-            ? [0, hold, viaTime, 1]
-            : [0, 0.48, 1]
-          : hold > 0
-            ? [0, hold, 1]
-            : [0, 1]
+        const xTo = effect.toX - effect.fromX
+        const yTo = effect.toY - effect.fromY
+        const xVia = viaX - effect.fromX
+        const yVia = viaY - effect.fromY
+        const xVia2 = via2X - effect.fromX
+        const yVia2 = via2Y - effect.fromY
+        let xFrames: number[]
+        let yFrames: number[]
+        let rotateFrames: number[]
+        let widthFrames: number[]
+        let heightFrames: number[]
+        let times: number[]
+        let floatTimes: number[]
+        let floatScaleFrames: number[]
+        let flipTimes: number[]
+        let flipYFrames: number[]
+
+        if (hold > 0) {
+          const viaTime = hold + (1 - hold) * 0.45
+          const flipTurnTime = Math.max(0.18, hold - 0.06)
+          floatTimes = [0, hold, hold + (1 - hold) * 0.46, 1]
+          floatScaleFrames = [1, 1, 1.015, 1]
+          flipTimes = [0, flipTurnTime, hold, 1]
+          flipYFrames = [0, 180, 180, 180]
+          if (hasVia) {
+            xFrames = [0, 0, xVia, xTo]
+            yFrames = [0, 0, yVia, yTo]
+            rotateFrames = [effect.rotateStart ?? -4, effect.rotateStart ?? -4, 0, effect.rotateEnd ?? 0]
+            widthFrames = [effect.width, effect.width, viaWidth, effect.toWidth ?? viaWidth]
+            heightFrames = [effect.height, effect.height, viaHeight, effect.toHeight ?? viaHeight]
+            times = [0, hold, viaTime, 1]
+          } else {
+            xFrames = [0, 0, xTo]
+            yFrames = [0, 0, yTo]
+            rotateFrames = [effect.rotateStart ?? -4, effect.rotateStart ?? -4, effect.rotateEnd ?? 0]
+            widthFrames = [effect.width, effect.width, effect.toWidth ?? effect.width]
+            heightFrames = [effect.height, effect.height, effect.toHeight ?? effect.height]
+            times = [0, hold, 1]
+          }
+        } else if (useStagedCapture) {
+          const stopTime = hasVia2 ? STAGED_CAPTURE_STOP_TIME : hasVia ? 0.46 : 0.5
+          const flipEndTime = hasVia2 ? STAGED_CAPTURE_FLIP_END_TIME : hasVia ? 0.72 : 0.76
+          const mergeTime = hasVia2 ? STAGED_CAPTURE_MERGE_TIME : flipEndTime
+          if (hasVia2) {
+            xFrames = [0, xVia, xVia, xVia2, xTo]
+            yFrames = [0, yVia, yVia, yVia2, yTo]
+            rotateFrames = [effect.rotateStart ?? -4, 0, 0, 0, effect.rotateEnd ?? 0]
+            widthFrames = [effect.width, viaWidth, viaWidth, via2Width, effect.toWidth ?? via2Width]
+            heightFrames = [effect.height, viaHeight, viaHeight, via2Height, effect.toHeight ?? via2Height]
+            times = [0, stopTime, flipEndTime, mergeTime, 1]
+            floatTimes = [0, stopTime, flipEndTime, mergeTime, 1]
+            floatScaleFrames = [1, 1.012, 1.012, 1.006, 1]
+            flipTimes = flipOnArrival
+              ? [0, stopTime, flipEndTime, mergeTime, 1]
+              : [0, 1]
+            flipYFrames = flipOnArrival
+              ? [0, 0, 180, 180, 180]
+              : [0, 0]
+          } else if (hasVia) {
+            xFrames = [0, xVia, xVia, xTo]
+            yFrames = [0, yVia, yVia, yTo]
+            rotateFrames = [effect.rotateStart ?? -4, 0, 0, effect.rotateEnd ?? 0]
+            widthFrames = [effect.width, viaWidth, viaWidth, effect.toWidth ?? viaWidth]
+            heightFrames = [effect.height, viaHeight, viaHeight, effect.toHeight ?? viaHeight]
+            times = [0, stopTime, flipEndTime, 1]
+            floatTimes = [0, stopTime, flipEndTime, 1]
+            floatScaleFrames = [1, 1.012, 1.012, 1]
+            flipTimes = flipOnArrival
+              ? [0, stopTime, flipEndTime, 1]
+              : [0, 1]
+            flipYFrames = flipOnArrival
+              ? [0, 0, 180, 180]
+              : [0, 0]
+          } else {
+            xFrames = [0, xTo, xTo]
+            yFrames = [0, yTo, yTo]
+            rotateFrames = [effect.rotateStart ?? -4, effect.rotateEnd ?? 0, effect.rotateEnd ?? 0]
+            widthFrames = [effect.width, effect.toWidth ?? effect.width, effect.toWidth ?? effect.width]
+            heightFrames = [effect.height, effect.toHeight ?? effect.height, effect.toHeight ?? effect.height]
+            times = [0, flipEndTime, 1]
+            floatTimes = [0, flipEndTime, 1]
+            floatScaleFrames = [1, 1.012, 1]
+            flipTimes = flipOnArrival
+              ? [0, 0.44, flipEndTime, 1]
+              : [0, 1]
+            flipYFrames = flipOnArrival
+              ? [0, 0, 180, 180]
+              : [0, 0]
+          }
+        } else {
+          const viaTime = 0.48
+          floatTimes = [0, 0.72, 1]
+          floatScaleFrames = [1, 1.015, 1]
+          flipTimes = [0, 0.2, 0.4, 1]
+          flipYFrames = [0, 180, 180, 180]
+          if (hasVia) {
+            xFrames = [0, xVia, xTo]
+            yFrames = [0, yVia, yTo]
+            rotateFrames = [effect.rotateStart ?? -4, 0, effect.rotateEnd ?? 0]
+            widthFrames = [effect.width, viaWidth, effect.toWidth ?? viaWidth]
+            heightFrames = [effect.height, viaHeight, effect.toHeight ?? viaHeight]
+            times = [0, viaTime, 1]
+          } else {
+            xFrames = [0, xTo]
+            yFrames = [0, yTo]
+            rotateFrames = [effect.rotateStart ?? -4, effect.rotateEnd ?? 0]
+            widthFrames = [effect.width, effect.toWidth ?? effect.width]
+            heightFrames = [effect.height, effect.toHeight ?? effect.height]
+            times = [0, 1]
+          }
+        }
 
         return (
           <motion.div
@@ -871,7 +957,7 @@ function CardMoveOverlayEffect(props: {
                     className="capture-overlay-flip-inner"
                     initial={{ rotateY: 0, y: 0, rotateZ: 0, scale: 1 }}
                     animate={{
-                      rotateY: [0, 180, 180, 180],
+                      rotateY: flipYFrames,
                       y: [0, 0, 0, 0],
                       rotateZ: [0, 0, 0, 0],
                       scale: [1, 1, 1, 1],
@@ -1253,14 +1339,18 @@ function App() {
     turnBannerIdRef.current = nextBanner.id
     const latestAction = game.turnHistory[game.turnHistory.length - 1]
     if (latestAction?.type === 'koikoi') {
+      const delayMs =
+        latestAction.player === aiPlayer.id
+          ? OPPONENT_KOIKOI_EFFECT_DURATION_MS + 140
+          : TURN_BANNER_AFTER_KOIKOI_DELAY_MS
       turnBannerDelayTimerRef.current = window.setTimeout(() => {
         setTurnBanner(nextBanner)
         turnBannerDelayTimerRef.current = null
-      }, TURN_BANNER_AFTER_KOIKOI_DELAY_MS)
+      }, delayMs)
       return
     }
     setTurnBanner(nextBanner)
-  }, [game.currentPlayerIndex, game.phase, game.turnHistory, localPlayerIndex, opponentDisplayName])
+  }, [aiPlayer.id, game.currentPlayerIndex, game.phase, game.turnHistory, localPlayerIndex, opponentDisplayName])
 
   useEffect(() => {
     return () => {
@@ -1519,10 +1609,14 @@ function App() {
       id: turnDecisionCalloutIdRef.current,
       kind: latest.type,
       text: label,
+      durationMs:
+        latest.type === 'koikoi' && latest.player === aiPlayer.id
+          ? OPPONENT_KOIKOI_EFFECT_DURATION_MS
+          : TURN_DECISION_EFFECT_DURATION_MS,
     }
     turnDecisionCalloutIdRef.current += 1
     setTurnDecisionCallouts((current) => [...current, callout])
-  }, [game.players, game.turnHistory, humanPlayer.id, multiplayer.mode])
+  }, [aiPlayer.id, game.players, game.turnHistory, humanPlayer.id, multiplayer.mode])
 
   useEffect(() => {
     const preloaders = HANAFUDA_CARDS.map((card) => {
@@ -1644,18 +1738,30 @@ function App() {
     const centerLeftA = zoneBaseX - overlap / 2
     const centerLeftB = zoneBaseX + overlap / 2
 
-    const hiddenHandHold = playerId === aiPlayer.id && source === 'hand' ? CPU_HAND_REVEAL_HOLD_RATIO : 0
-    const concealTargetDuringHiddenFlip = playerId === aiPlayer.id && source === 'hand'
+    const isAiHiddenHandCapture = playerId === aiPlayer.id && source === 'hand'
+    const useArrivalFlip = isAiHiddenHandCapture && useMobileViewLayout
+    const hiddenHandHold = isAiHiddenHandCapture && !useArrivalFlip ? CPU_HAND_REVEAL_HOLD_RATIO : 0
+    const concealTargetDuringHiddenFlip = isAiHiddenHandCapture && !useArrivalFlip
+    const yakuStopX = zoneBaseX - targetCardWidth / 2
+    const yakuStopY = zoneBaseY - targetCardHeight * 0.34
+    const playedViaX = useArrivalFlip ? yakuStopX : matchedRect.left
+    const playedViaY = useArrivalFlip ? yakuStopY : matchedRect.top
+    const playedViaWidth = useArrivalFlip ? targetCardWidth : matchedRect.width
+    const playedViaHeight = useArrivalFlip ? targetCardHeight : matchedRect.height
     const matchedCardTilt = stableTilt(matchedCard.id)
     const effectFromPlayed: CardMoveEffect = {
       id: captureEffectIdRef.current,
       card,
       fromX: sourceRect.left,
       fromY: sourceRect.top,
-      viaX: matchedRect.left,
-      viaY: matchedRect.top,
-      viaWidth: matchedRect.width,
-      viaHeight: matchedRect.height,
+      viaX: playedViaX,
+      viaY: playedViaY,
+      viaWidth: playedViaWidth,
+      viaHeight: playedViaHeight,
+      via2X: useArrivalFlip ? matchedRect.left : undefined,
+      via2Y: useArrivalFlip ? matchedRect.top : undefined,
+      via2Width: useArrivalFlip ? matchedRect.width : undefined,
+      via2Height: useArrivalFlip ? matchedRect.height : undefined,
       toX: centerLeftA - targetCardWidth / 2,
       toY: zoneBaseY + randomYOffset,
       width: sourceRect.width,
@@ -1664,11 +1770,12 @@ function App() {
       toHeight: targetCardHeight,
       rotateStart: -6,
       rotateEnd: randomRotate,
-      duration: 1.8,
+      duration: useArrivalFlip ? STAGED_CAPTURE_DURATION : 1.8,
       zIndex: 5,
       hideFieldCardId: matchedCard.id,
-      flipFromBack: hiddenHandHold > 0,
+      flipFromBack: isAiHiddenHandCapture,
       flipHoldRatio: hiddenHandHold > 0 ? hiddenHandHold : undefined,
+      flipOnArrival: useArrivalFlip,
       fromDeck: source === 'draw',
     }
     captureEffectIdRef.current += 1
@@ -1682,6 +1789,10 @@ function App() {
       viaY: matchedRect.top,
       viaWidth: matchedRect.width,
       viaHeight: matchedRect.height,
+      via2X: useArrivalFlip ? matchedRect.left : undefined,
+      via2Y: useArrivalFlip ? matchedRect.top : undefined,
+      via2Width: useArrivalFlip ? matchedRect.width : undefined,
+      via2Height: useArrivalFlip ? matchedRect.height : undefined,
       toX: centerLeftB - targetCardWidth / 2,
       toY: zoneBaseY - randomYOffset,
       width: matchedRect.width,
@@ -1690,14 +1801,15 @@ function App() {
       toHeight: targetCardHeight,
       rotateStart: concealTargetDuringHiddenFlip ? matchedCardTilt : 4,
       rotateEnd: concealTargetDuringHiddenFlip ? matchedCardTilt - randomRotate * 0.35 : -randomRotate * 0.8,
-      duration: 1.8,
+      duration: useArrivalFlip ? STAGED_CAPTURE_DURATION : 1.8,
       zIndex: 4,
       hideFieldCardId: matchedCard.id,
       flipHoldRatio: hiddenHandHold > 0 ? hiddenHandHold : undefined,
+      flipOnArrival: useArrivalFlip,
     }
     captureEffectIdRef.current += 1
     return [effectFromPlayed, effectFromField]
-  }, [aiPlayer.id, collectCardRects])
+  }, [aiPlayer.id, collectCardRects, useMobileViewLayout])
 
   const resolveCaptureSelection = useCallback((fieldCardId: string, source: 'hand' | 'draw'): void => {
     const current = gameRef.current
@@ -1853,24 +1965,59 @@ function App() {
         latest.player === 'player2' &&
         previous?.type === 'playCard' &&
         previous.card?.id === latest.card.id
+      const useStagedAddToField = fromCpuHand && useMobileViewLayout
       const cardTilt = stableTilt(latest.card.id)
+      let viaX: number | undefined
+      let viaY: number | undefined
+      let viaWidth: number | undefined
+      let viaHeight: number | undefined
+      let rotateStart = cardTilt
+      let duration = 1.32
+      let flipHoldRatio = fromCpuHand ? CPU_HAND_REVEAL_HOLD_RATIO : undefined
+      let flipOnArrival: boolean | undefined
+
+      if (useStagedAddToField) {
+        const captureZone = document.querySelector<HTMLElement>(`[data-capture-zone="${latest.player}"]`)
+        const captureZoneRect = captureZone?.getBoundingClientRect()
+        if (captureZoneRect) {
+          const zoneBaseX = captureZoneRect.left + captureZoneRect.width * 0.5
+          const zoneBaseY = captureZoneRect.top + Math.min(captureZoneRect.height * 0.5, 60)
+          const stopCardWidth = CAPTURE_STACK_CARD_WIDTH
+          const stopCardHeight = stopCardWidth * CARD_HEIGHT_PER_WIDTH
+          viaX = zoneBaseX - stopCardWidth / 2
+          viaY = zoneBaseY - stopCardHeight * 0.34
+          viaWidth = stopCardWidth
+          viaHeight = stopCardHeight
+          rotateStart = -6
+          duration = STAGED_ADD_TO_FIELD_DURATION
+          flipHoldRatio = undefined
+          flipOnArrival = true
+        }
+      }
 
       const effect: CardMoveEffect = {
         id: captureEffectIdRef.current,
         card: latest.card,
         fromX: sourceRect.left,
         fromY: sourceRect.top,
+        viaX,
+        viaY,
+        viaWidth,
+        viaHeight,
         toX: targetRect.left,
         toY: targetRect.top,
         width: sourceRect.width,
         height: sourceRect.height,
-        rotateStart: cardTilt,
+        toWidth: targetRect.width,
+        toHeight: targetRect.height,
+        rotateStart,
         rotateEnd: cardTilt,
-        duration: 1.32,
+        duration,
         zIndex: 6,
         hideFieldCardId: latest.card.id,
         flipFromBack: fromCpuHand,
-        flipHoldRatio: fromCpuHand ? CPU_HAND_REVEAL_HOLD_RATIO : undefined,
+        flipHoldRatio,
+        flipOnArrival,
         addToFieldHistoryLength: historyLength,
         fromDeck: previous?.type === 'drawCard' && previous.card?.id === latest.card.id,
       }
@@ -1878,7 +2025,7 @@ function App() {
       appendMoveEffects([effect])
       return
     }
-  }, [appendMoveEffects, buildCaptureMoveEffects, game.turnHistory, moveEffects])
+  }, [appendMoveEffects, buildCaptureMoveEffects, game.turnHistory, moveEffects, useMobileViewLayout])
 
   useLayoutEffect(() => {
     if (interactionLocked || pendingCaptureGameRef.current) {
@@ -2042,7 +2189,7 @@ function App() {
         return
       }
       executeTurnCommand({ type: 'resolveKoiKoi', decision: chooseAiKoiKoi(current) })
-    }, AI_THINK_DELAY_MS)
+    }, AI_KOIKOI_DECISION_DELAY_MS)
 
     return () => window.clearTimeout(timer)
   }, [executeTurnCommand, game.phase, interactionLocked, isCpuAiTurn, opponentPlayerIndex])
@@ -2605,7 +2752,7 @@ function App() {
 
   return (
     <main ref={appContainerRef} className={`app ${isChromeCollapsed ? 'chrome-collapsed' : ''}`} onPointerDown={handleAppPointerDown}>
-      <section className="app-chrome">
+      <section className={`app-chrome ${isChromeCollapsed ? 'collapsed' : 'expanded'}`}>
         <div className="chrome-toggle-row">
           {isMobileLayout && !isLandscapeFullscreen ? (
             <button
@@ -2643,7 +2790,7 @@ function App() {
         </div>
 
         {!isChromeCollapsed ? (
-          <>
+          <div className="app-chrome-panel">
             <header className="topbar">
               <div>
                 <h1>花札 こいこい</h1>
@@ -2655,7 +2802,7 @@ function App() {
                     {isLocalTurn ? 'あなたの番' : `${opponentDisplayName}の番`}
                   </span>
                 ) : null}
-                <span className="phase-chip">{phaseMessage}</span>
+                <span className="visually-hidden" aria-live="polite">{phaseMessage}</span>
                 <div className="round-count-selector" aria-label="月数選択">
                   {ROUND_COUNT_OPTIONS.map((roundCount) => (
                     <button
@@ -2716,7 +2863,7 @@ function App() {
                 </div>
               </section>
             ) : null}
-          </>
+          </div>
         ) : null}
       </section>
 

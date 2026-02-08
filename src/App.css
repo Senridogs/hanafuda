@@ -1,5 +1,7 @@
 .app {
   --card-width: clamp(64px, 6.8vw, 88px);
+  --app-safe-padding: clamp(10px, 1.4vw, 18px);
+  --chrome-layer-z: 1300;
   --mobile-yaku-font-strip-title: 10px;
   --mobile-yaku-font-strip-note: 9px;
   --mobile-yaku-font-chip: 9px;
@@ -12,10 +14,10 @@
   --mobile-yaku-font-grid-cell: 12px;
   --mobile-yaku-font-grid-empty: 8px;
   height: 100dvh;
-  padding: clamp(10px, 1.4vw, 18px);
+  padding: var(--app-safe-padding);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: clamp(8px, 1.2vh, 14px);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
   overflow: hidden;
   color: #2a2510;
   user-select: none;
@@ -76,14 +78,37 @@
 }
 
 .app.chrome-collapsed {
-  gap: clamp(6px, 0.9vh, 10px);
+  gap: 0;
 }
 
 .app-chrome {
+  position: fixed;
+  top: var(--app-safe-padding);
+  left: var(--app-safe-padding);
+  right: var(--app-safe-padding);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: clamp(8px, 1.2vh, 14px);
+  min-height: 0;
+  z-index: var(--chrome-layer-z);
+  pointer-events: none;
+}
+
+.app-chrome-panel {
+  width: min(100%, 980px);
+  max-height: min(74dvh, 620px);
   display: flex;
   flex-direction: column;
   gap: clamp(8px, 1.2vh, 14px);
-  min-height: 0;
+  padding: clamp(10px, 1.6vh, 14px);
+  border-radius: 16px;
+  border: 1px solid rgb(249 221 170 / 24%);
+  background: linear-gradient(180deg, rgb(7 14 18 / 78%), rgb(17 23 32 / 84%));
+  box-shadow: 0 18px 30px rgb(0 0 0 / 42%);
+  color: #f7f0e2;
+  overflow: auto;
+  pointer-events: auto;
 }
 
 
@@ -113,6 +138,9 @@
   justify-content: flex-end;
   gap: 8px;
   min-height: 0;
+  max-width: 100%;
+  width: max-content;
+  pointer-events: auto;
 }
 
 .topbar {
@@ -131,7 +159,7 @@
 
 .topbar p {
   margin: 4px 0 0;
-  color: #5a5a5a;
+  color: #d7c7a7;
 }
 
 .topbar-actions {
@@ -340,12 +368,16 @@
   }
 }
 
-.phase-chip {
-  border-radius: 999px;
-  border: 1px solid rgb(255 226 173 / 30%);
-  padding: 8px 14px;
-  background: rgb(0 0 0 / 35%);
-  font-size: 0.9rem;
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .table-layout {
@@ -359,7 +391,29 @@
 }
 
 .table-layout.mobile {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
   grid-template-columns: minmax(0, 1fr);
+  overflow: visible;
+}
+
+.table-layout.mobile::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--app-safe-padding));
+  right: calc(-1 * var(--app-safe-padding));
+  top: calc(-1 * var(--app-safe-padding));
+  height: clamp(46px, 12vw, 76px);
+  pointer-events: none;
+  z-index: 6;
+  background: linear-gradient(
+    to bottom,
+    rgb(250 248 240 / 60%) 0%,
+    rgb(250 248 240 / 56%) 34%,
+    rgb(250 248 240 / 34%) 68%,
+    rgb(247 244 232 / 0%) 100%
+  );
 }
 
 .table-placeholder {
@@ -504,17 +558,12 @@
   min-height: var(--board-card-height);
 }
 
-/* モバイルで相手の手札を上にずらす */
+/* モバイルの相手手札レイアウト */
 .board-center.mobile .opponent-rack.hand-flat {
   position: relative;
   margin-top: calc(var(--board-card-width) * -0.7);
   background: transparent !important;
-}
-
-/* カード単位で上部をグラデーションで隠す */
-.board-center.mobile .opponent-rack.hand-flat .card-tile {
-  mask-image: linear-gradient(to bottom, transparent 0%, transparent 30%, black 60%, black 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, transparent 30%, black 60%, black 100%);
+  overflow: visible;
 }
 
 .field-rack {
@@ -1325,6 +1374,12 @@ button.mobile-yaku-strip.active {
     linear-gradient(175deg, #6e2f1d 0%, #803f28 46%, #a55c35 100%);
 }
 
+.card-back span {
+  display: block;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .card-tile.compact {
   width: 34px;
   border-radius: 4px;
@@ -1953,6 +2008,17 @@ button:hover {
   display: block;
 }
 
+/* Overlay animation uses small card sizes; fix back-text centering while resizing. */
+.capture-overlay-card .card-back {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+}
+
+.capture-overlay-card .card-back span {
+  width: 100%;
+  text-align: center;
+}
+
 .capture-overlay-target {
   filter: brightness(1.05);
 }
@@ -1981,7 +2047,19 @@ button:hover {
 @media (max-width: 720px) {
   .app {
     --card-width: clamp(54px, 12.4vw, 68px);
-    padding: 8px;
+    --app-safe-padding: 8px;
+    padding: var(--app-safe-padding);
+  }
+
+  .app-chrome-panel {
+    width: 100%;
+    max-height: min(78dvh, 560px);
+    border-radius: 14px;
+    padding: 10px;
+  }
+
+  .mobile-yaku-section {
+    background: rgb(255 247 204 / 72%);
   }
 
   .table-layout.mobile {
@@ -2087,6 +2165,16 @@ button:hover {
 
   .yaku-drop-layer {
     top: 12%;
+    width: calc(100vw - (var(--app-safe-padding) * 2));
+    max-width: calc(100vw - (var(--app-safe-padding) * 2));
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .yaku-drop-title {
+    top: -26px;
+    font-size: 0.9rem;
   }
 
   .turn-callout-layer {
@@ -2099,7 +2187,7 @@ button:hover {
   }
 
   .yaku-drop-card {
-    width: 90px;
+    width: clamp(42px, 13.5vw, 58px);
   }
 
   .credit {
@@ -2155,7 +2243,6 @@ button:hover {
   }
 
   .topbar p,
-  .phase-chip,
   .turn-badge,
   .round-count-button,
   .lobby-status {
