@@ -3299,7 +3299,7 @@ function App() {
       player2Name: '相手',
     })
     setGame(initial)
-    multiplayer.startHost(initial)
+    multiplayer.startHost(initial, undefined, false)
   }, [game.config, multiplayer, resetTransientUiState, selectedRoundCount])
 
   const handleJoinGuest = useCallback((): void => {
@@ -3322,13 +3322,8 @@ function App() {
     setSelectedRoundCount(null)
     resetTransientUiState()
     multiplayer.leaveMultiplayer()
-    setGame(createNewGame({
-      ...game.config,
-      enableAI: true,
-      player1Name: DEFAULT_CONFIG.player1Name,
-      player2Name: DEFAULT_CONFIG.player2Name,
-    }))
-  }, [game.config, isMobileLayout, multiplayer, resetTransientUiState])
+    setGame(createNewGame())
+  }, [isMobileLayout, multiplayer, resetTransientUiState])
 
   const restartWithConfig = useCallback((nextConfig: KoiKoiGameState['config']): void => {
     resetTransientUiState()

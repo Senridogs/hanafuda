@@ -96,7 +96,8 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
   const isConnectedSession = isMultiplayer && connectionStatus === 'connected'
   const isHostWaitingForGuest = isHostMode && connectionStatus !== 'connected'
   const showRoundSelectionWarning = mode === 'cpu' && selectedRoundCount === null
-  const disableSetupButtons = isMultiplayer || selectedRoundCount === null
+  const disableCpuStartButton = isMultiplayer || selectedRoundCount === null
+  const disableHostCreateButton = isMultiplayer || selectedRoundCount === null
   const disableJoinControls = isMultiplayer || isHostMode
   const canCopyRoomId = isHostWaitingForGuest && roomId.length > 0
   const [copiedRoomId, setCopiedRoomId] = useState<string | null>(null)
@@ -136,7 +137,7 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
           type="button"
           className={mode === 'cpu' ? 'primary' : ''}
           onClick={onSwitchToCpu}
-          disabled={disableSetupButtons}
+          disabled={disableCpuStartButton}
         >
           CPU対戦
         </button>
@@ -178,13 +179,13 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
               placeholder="作成する部屋ID（空欄で自動生成）"
               autoComplete="off"
               spellCheck={false}
-              disabled={disableSetupButtons}
+              disabled={isMultiplayer}
             />
             <button
               type="button"
               className=""
               onClick={onStartHost}
-              disabled={disableSetupButtons}
+              disabled={disableHostCreateButton}
             >
               部屋を作る
             </button>

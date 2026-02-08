@@ -133,7 +133,11 @@ describe('App interaction safeguards', () => {
     render(<App />)
 
     const cpuButton = screen.getByRole('button', { name: 'CPU対戦' }) as HTMLButtonElement
+    const hostInput = screen.getByPlaceholderText('作成する部屋ID（空欄で自動生成）') as HTMLInputElement
     expect(cpuButton.disabled).toBe(true)
+    expect(hostInput.disabled).toBe(false)
+    fireEvent.change(hostInput, { target: { value: 'ROOM-ABC' } })
+    expect(hostInput.value).toBe('ROOM-ABC')
     expect(screen.getByText('未選択')).toBeTruthy()
     expect(screen.getByText('月数を選ぶまで対戦を開始できません。')).toBeTruthy()
 
