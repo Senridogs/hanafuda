@@ -1497,7 +1497,9 @@ function App() {
   // Use PC layout only when in fullscreen AND landscape orientation
   // Portrait fullscreen keeps mobile layout
   const useMobileViewLayout = isMobileLayout && !(isLandscapeFullscreen && isLandscapeOrientation)
-  const useMobileRuleHelpPagination = isMobileLayout || isLandscapeFullscreen
+  const isLandscapeMobileRuleHelpMode =
+    isLandscapeOrientation && (isMobileLayout || isLandscapeFullscreen)
+  const useMobileRuleHelpPagination = isMobileLayout && !isLandscapeMobileRuleHelpMode
   const ruleHelpPages = useMemo<readonly RuleHelpPage[]>(() => {
     const monthRanges: ReadonlyArray<readonly [number, number]> = (() => {
       if (!useMobileRuleHelpPagination) {
