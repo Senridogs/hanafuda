@@ -3941,6 +3941,7 @@ function App() {
               player2TotalScore={aiPlayer.score}
               currentRound={game.round}
               maxRounds={game.round}
+              isMobileView={useMobileViewLayout}
             />
           }
           primaryActionLabel="もう一度遊ぶ"
