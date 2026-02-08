@@ -11,6 +11,58 @@ const DRAW_TYPE_WEIGHT: Record<HanafudaCard['type'], number> = {
   kasu: 2,
 }
 
+interface CpuAssistProfile {
+  readonly openingMargin: number
+  readonly maxExtraRetries: number
+  readonly drawSearchWindow: number
+  readonly drawRigChance: number
+  readonly openingBias: 'favor-ai' | 'favor-human'
+  readonly drawBias: 'best' | 'worst'
+}
+
+const CPU_ASSIST_BY_DIFFICULTY: Partial<Record<GameConfig['aiDifficulty'], CpuAssistProfile>> = {
+  yowai: {
+    openingMargin: 1,
+    maxExtraRetries: 2,
+    drawSearchWindow: 2,
+    drawRigChance: 0.1,
+    openingBias: 'favor-human',
+    drawBias: 'worst',
+  },
+  tsuyoi: {
+    openingMargin: 1,
+    maxExtraRetries: 6,
+    drawSearchWindow: 2,
+    drawRigChance: 0.15,
+    openingBias: 'favor-ai',
+    drawBias: 'best',
+  },
+  yabai: {
+    openingMargin: 4,
+    maxExtraRetries: 18,
+    drawSearchWindow: 2,
+    drawRigChance: 0.35,
+    openingBias: 'favor-ai',
+    drawBias: 'best',
+  },
+  oni: {
+    openingMargin: 8,
+    maxExtraRetries: 32,
+    drawSearchWindow: 3,
+    drawRigChance: 0.55,
+    openingBias: 'favor-ai',
+    drawBias: 'best',
+  },
+  kami: {
+    openingMargin: 13,
+    maxExtraRetries: 54,
+    drawSearchWindow: 3,
+    drawRigChance: 0.8,
+    openingBias: 'favor-ai',
+    drawBias: 'best',
+  },
+}
+
 export type MatchSource = 'hand' | 'draw' | null
 export type RoundReason = 'stop' | 'exhausted' | 'draw' | null
 export type KoiKoiDecision = 'koikoi' | 'stop'
@@ -95,8 +147,11 @@ function requiresRedeal(
   return hasFourCardsOfSameMonth(field) || hasFourCardsOfSameMonth(player1Hand) || hasFourCardsOfSameMonth(player2Hand)
 }
 
-function isKamiAssistEnabled(config: GameConfig): boolean {
-  return config.enableAI && config.aiDifficulty === 'kami'
+function getCpuAssistProfile(config: GameConfig): CpuAssistProfile | null {
+  if (!config.enableAI) {
+    return null
+  }
+  return CPU_ASSIST_BY_DIFFICULTY[config.aiDifficulty] ?? null
 }
 
 function cardTempoValue(card: HanafudaCard): number {
@@ -118,14 +173,19 @@ function evaluateOpeningTempo(hand: readonly HanafudaCard[], field: readonly Han
   return total
 }
 
-function hasKamiOpeningAdvantage(
+function passesOpeningBias(
   humanHand: readonly HanafudaCard[],
   aiHand: readonly HanafudaCard[],
   field: readonly HanafudaCard[],
+  margin: number,
+  bias: CpuAssistProfile['openingBias'],
 ): boolean {
   const aiTempo = evaluateOpeningTempo(aiHand, field)
   const humanTempo = evaluateOpeningTempo(humanHand, field)
-  return aiTempo >= humanTempo + 8
+  if (bias === 'favor-human') {
+    return aiTempo <= humanTempo - margin
+  }
+  return aiTempo >= humanTempo + margin
 }
 
 function drawImpactScore(card: HanafudaCard, field: readonly HanafudaCard[]): number {
@@ -137,28 +197,30 @@ function drawImpactScore(card: HanafudaCard, field: readonly HanafudaCard[]): nu
   return 42 + matches.length * 16 + cardTempoValue(card) + bestField
 }
 
-function chooseRiggedDrawIndexForKami(
+function chooseRiggedDrawIndexForCpu(
   deck: readonly HanafudaCard[],
   field: readonly HanafudaCard[],
-  forAiPlayer: boolean,
+  searchWindow: number,
+  bias: CpuAssistProfile['drawBias'],
 ): number {
-  if (!forAiPlayer) {
-    return 0
-  }
-  const searchWindow = Math.min(deck.length, 2)
-  if (searchWindow <= 1) {
+  const boundedWindow = Math.min(deck.length, searchWindow)
+  if (boundedWindow <= 1) {
     return 0
   }
 
   let chosenIndex = 0
-  let chosenScore = drawImpactScore(deck[0] as HanafudaCard, field)
-  for (let index = 1; index < searchWindow; index += 1) {
+  const firstCard = deck[0]
+  if (!firstCard) {
+    return 0
+  }
+  let chosenScore = drawImpactScore(firstCard, field)
+  for (let index = 1; index < boundedWindow; index += 1) {
     const card = deck[index]
     if (!card) {
       continue
     }
     const score = drawImpactScore(card, field)
-    if (score > chosenScore) {
+    if ((bias === 'best' && score > chosenScore) || (bias === 'worst' && score < chosenScore)) {
       chosenIndex = index
       chosenScore = score
     }
@@ -181,13 +243,24 @@ function moveDeckIndexToTop(deck: readonly HanafudaCard[], index: number): Hanaf
   return result
 }
 
-function maybeRigDeckForKami(state: KoiKoiGameState): readonly HanafudaCard[] {
-  if (!isKamiAssistEnabled(state.config) || state.deck.length <= 1) {
+function maybeRigDeckForCpu(state: KoiKoiGameState): readonly HanafudaCard[] {
+  const assistProfile = getCpuAssistProfile(state.config)
+  if (!assistProfile || state.deck.length <= 1) {
+    return state.deck
+  }
+  if (state.currentPlayerIndex !== 1) {
+    return state.deck
+  }
+  if (assistProfile.drawSearchWindow <= 1 || Math.random() > assistProfile.drawRigChance) {
     return state.deck
   }
 
-  const forAiPlayer = state.currentPlayerIndex === 1
-  const chosenIndex = chooseRiggedDrawIndexForKami(state.deck, state.field, forAiPlayer)
+  const chosenIndex = chooseRiggedDrawIndexForCpu(
+    state.deck,
+    state.field,
+    assistProfile.drawSearchWindow,
+    assistProfile.drawBias,
+  )
   if (chosenIndex === 0) {
     return state.deck
   }
@@ -201,16 +274,26 @@ function dealRound(
   starterIndex: 0 | 1,
   prevRoundScoreHistory: readonly RoundScoreEntry[] = [],
 ): KoiKoiGameState {
-  const kamiAssist = isKamiAssistEnabled(config)
+  const assistProfile = getCpuAssistProfile(config)
   let dealt = dealCards(shuffleDeck(createDeck()))
   let retries = 0
+  const retryLimit = 256 + (assistProfile?.maxExtraRetries ?? 0)
   while (
     requiresRedeal(dealt.player1Hand, dealt.player2Hand, dealt.field)
-    || (kamiAssist && !hasKamiOpeningAdvantage(dealt.player1Hand, dealt.player2Hand, dealt.field))
+    || (
+      assistProfile
+      && !passesOpeningBias(
+        dealt.player1Hand,
+        dealt.player2Hand,
+        dealt.field,
+        assistProfile.openingMargin,
+        assistProfile.openingBias,
+      )
+    )
   ) {
     dealt = dealCards(shuffleDeck(createDeck()))
     retries += 1
-    if (retries > (kamiAssist ? 80 : 256)) {
+    if (retries > retryLimit) {
       throw new Error('Failed to find a valid initial deal')
     }
   }
@@ -562,7 +645,7 @@ export function drawStep(state: KoiKoiGameState): KoiKoiGameState {
   }
 
   const player = state.players[state.currentPlayerIndex]
-  const preparedDeck = maybeRigDeckForKami(state)
+  const preparedDeck = maybeRigDeckForCpu(state)
   const result = drawCard(preparedDeck)
   if (!result) {
     return finishRoundFromExhaustion(state)
