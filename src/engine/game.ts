@@ -1,4 +1,4 @@
-import { createDeck, dealCards, drawCard, shuffleDeck } from './deck'
+import { createDeck, createSeededRandom, dealCards, drawCard, shuffleDeck } from './deck'
 import { DEFAULT_CONFIG, type GameConfig, type GameState, type HanafudaCard, type Player, type TurnAction, type Yaku } from './types'
 import { calculateYaku, getYakuTotalPoints } from './yaku'
 
@@ -387,6 +387,7 @@ function dealRound(
   round: number,
   starterIndex: 0 | 1,
   prevRoundScoreHistory: readonly RoundScoreEntry[] = [],
+  random: () => number = Math.random,
 ): KoiKoiGameState {
   const assistProfile = resolveCpuAssistProfileForRound(
     config,
@@ -394,7 +395,7 @@ function dealRound(
     players[0].score,
     players[1].score,
   )
-  let dealt = dealCards(shuffleDeck(createDeck()))
+  let dealt = dealCards(shuffleDeck(createDeck(), random), random)
   let retries = 0
   const retryLimit = 256 + (assistProfile?.maxExtraRetries ?? 0)
   while (
@@ -410,7 +411,7 @@ function dealRound(
       )
     )
   ) {
-    dealt = dealCards(shuffleDeck(createDeck()))
+    dealt = dealCards(shuffleDeck(createDeck(), random), random)
     retries += 1
     if (retries > retryLimit) {
       throw new Error('Failed to find a valid initial deal')
@@ -647,8 +648,9 @@ function getStopRoundPoints(state: KoiKoiGameState, playerIndex: 0 | 1): number 
   return basePoints * multiplier
 }
 
-export function createNewGame(config: GameConfig = DEFAULT_CONFIG): KoiKoiGameState {
-  return dealRound([createPlayer('player1', config.player1Name), createPlayer('player2', config.player2Name)], config, 1, 0)
+export function createNewGame(config: GameConfig = DEFAULT_CONFIG, seed?: number): KoiKoiGameState {
+  const random = seed === undefined ? Math.random : createSeededRandom(seed)
+  return dealRound([createPlayer('player1', config.player1Name), createPlayer('player2', config.player2Name)], config, 1, 0, [], random)
 }
 
 export function getMatchingFieldCards(
@@ -864,7 +866,7 @@ export function resolveKoiKoi(state: KoiKoiGameState, decision: KoiKoiDecision):
   )
 }
 
-export function startNextRound(state: KoiKoiGameState): KoiKoiGameState {
+export function startNextRound(state: KoiKoiGameState, seed?: number): KoiKoiGameState {
   if (state.phase !== 'roundEnd') {
     return state
   }
@@ -883,5 +885,6 @@ export function startNextRound(state: KoiKoiGameState): KoiKoiGameState {
     { ...state.players[0], hand: [], captured: [], completedYaku: [] },
     { ...state.players[1], hand: [], captured: [], completedYaku: [] },
   ]
-  return dealRound(carryPlayers, state.config, nextRound, nextStarterIndex, state.roundScoreHistory)
+  const random = seed === undefined ? Math.random : createSeededRandom(seed)
+  return dealRound(carryPlayers, state.config, nextRound, nextStarterIndex, state.roundScoreHistory, random)
 }

@@ -239,16 +239,25 @@ function createTransportCore(
   peer.on('error', (error) => {
     emitError(`Peerエラー: ${toErrorText(error)}`)
     clearGuestConnectTimeout()
+    if (currentConnection?.open) {
+      return
+    }
     setStatus('error')
   })
 
   peer.on('disconnected', () => {
     clearGuestConnectTimeout()
+    if (currentConnection?.open) {
+      return
+    }
     setStatus('disconnected')
   })
 
   peer.on('close', () => {
     clearGuestConnectTimeout()
+    if (currentConnection?.open) {
+      return
+    }
     setStatus('disconnected')
   })
 

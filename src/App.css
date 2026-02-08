@@ -204,6 +204,56 @@
   background: #c77434;
 }
 
+.lobby-round-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgb(249 221 170 / 24%);
+  background: rgb(0 0 0 / 18%);
+}
+
+.lobby-round-selector.required {
+  border-color: rgb(255 154 103 / 68%);
+  background: rgb(90 22 2 / 26%);
+}
+
+.lobby-round-selector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #e9dcc5;
+  font-size: 0.84rem;
+}
+
+.lobby-round-selector-state {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #ffe2ad;
+}
+
+.lobby-round-selector-state.unselected {
+  color: #ffbe99;
+}
+
+.lobby-round-selector-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #d8d2c2;
+}
+
+.lobby-round-selector-note.warning {
+  color: #ffd4b4;
+  font-weight: 700;
+}
+
+.lobby-round-selector .round-count-selector[aria-invalid="true"] {
+  border-color: rgb(255 154 103 / 72%);
+  box-shadow: 0 0 0 1px rgb(255 154 103 / 28%);
+}
+
 .multiplayer-lobby {
   display: flex;
   flex-direction: column;
@@ -264,6 +314,29 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.lobby-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgb(249 221 170 / 24%);
+  background: rgb(0 0 0 / 18%);
+}
+
+.lobby-section-title {
+  margin: 0;
+  color: #e9dcc5;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.lobby-section-note {
+  margin: 0;
+  color: #d8d2c2;
+  font-size: 0.78rem;
 }
 
 .lobby-input {
@@ -587,7 +660,7 @@
 
 .field-rack {
   display: grid;
-  grid-template-columns: var(--board-card-width) minmax(var(--board-field-min-width), 1fr);
+  grid-template-columns: minmax(var(--board-field-min-width), 1fr);
   align-items: start;
   gap: 6px;
   background: transparent;
@@ -595,6 +668,7 @@
   margin-bottom: 0;
   border-radius: 0;
   padding: 0;
+  min-width: 0;
 }
 
 .field-rack-inner {
@@ -613,19 +687,6 @@
   /* カードサイズに応じて自動調整 */
   background: transparent;
   border: 0;
-}
-
-.draw-slot {
-  width: var(--board-card-width);
-  min-height: 148px;
-  position: relative;
-  perspective: 1000px;
-}
-
-.draw-slot-card {
-  position: absolute;
-  inset: 0;
-  transform-style: preserve-3d;
 }
 
 .field-row {
@@ -1564,6 +1625,7 @@ button.mobile-yaku-strip.active {
 
 .overlay-card h2 {
   margin: 0;
+  color: #f7f0e2;
 }
 
 .overlay-card p {
@@ -2223,7 +2285,7 @@ button:hover {
   }
 
   .field-rack {
-    grid-template-columns: var(--board-card-width) minmax(var(--board-field-min-width), 1fr);
+    grid-template-columns: minmax(var(--board-field-min-width), 1fr);
     padding: var(--board-rack-padding);
     gap: var(--board-card-gap);
   }

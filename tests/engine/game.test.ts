@@ -393,4 +393,27 @@ describe('game flow', () => {
     expect(next.players[0].score).toBe(8)
     expect(next.players[1].score).toBe(13)
   })
+
+  it('uses seed to produce deterministic next round deals', () => {
+    const base = createTestState()
+    const roundEndState: KoiKoiGameState = {
+      ...base,
+      phase: 'roundEnd',
+      roundWinner: 'player1',
+      roundPoints: 5,
+      players: [
+        { ...base.players[0], score: 7 },
+        { ...base.players[1], score: 9 },
+      ],
+    }
+
+    const seed = 20260208
+    const nextA = startNextRound(roundEndState, seed)
+    const nextB = startNextRound(roundEndState, seed)
+
+    expect(nextA.players[0].hand.map((item) => item.id)).toEqual(nextB.players[0].hand.map((item) => item.id))
+    expect(nextA.players[1].hand.map((item) => item.id)).toEqual(nextB.players[1].hand.map((item) => item.id))
+    expect(nextA.field.map((item) => item.id)).toEqual(nextB.field.map((item) => item.id))
+    expect(nextA.deck.map((item) => item.id)).toEqual(nextB.deck.map((item) => item.id))
+  })
 })

@@ -145,6 +145,8 @@ export interface SessionMeta {
 }
 
 const SESSION_KEY = 'hanafuda:p2p:session'
+const LAST_HOST_ROOM_ID_KEY = 'hanafuda:p2p:last-host-room-id'
+const LAST_GUEST_ROOM_ID_KEY = 'hanafuda:p2p:last-guest-room-id'
 
 export function saveSessionMeta(meta: SessionMeta): void {
   const storage = getLocalStorage()
@@ -181,5 +183,51 @@ export function clearSessionMeta(): void {
     storage.removeItem(SESSION_KEY)
   } catch {
     // ignore
+  }
+}
+
+export function saveLastHostRoomId(roomId: string): void {
+  const storage = getLocalStorage()
+  const normalized = roomId.trim()
+  if (!storage || normalized.length === 0) return
+  try {
+    storage.setItem(LAST_HOST_ROOM_ID_KEY, normalized)
+  } catch {
+    // ignore quota / unavailable
+  }
+}
+
+export function loadLastHostRoomId(): string {
+  const storage = getLocalStorage()
+  if (!storage) return ''
+  try {
+    const value = storage.getItem(LAST_HOST_ROOM_ID_KEY)
+    if (typeof value !== 'string') return ''
+    return value.trim()
+  } catch {
+    return ''
+  }
+}
+
+export function saveLastGuestRoomId(roomId: string): void {
+  const storage = getLocalStorage()
+  const normalized = roomId.trim()
+  if (!storage || normalized.length === 0) return
+  try {
+    storage.setItem(LAST_GUEST_ROOM_ID_KEY, normalized)
+  } catch {
+    // ignore quota / unavailable
+  }
+}
+
+export function loadLastGuestRoomId(): string {
+  const storage = getLocalStorage()
+  if (!storage) return ''
+  try {
+    const value = storage.getItem(LAST_GUEST_ROOM_ID_KEY)
+    if (typeof value !== 'string') return ''
+    return value.trim()
+  } catch {
+    return ''
   }
 }

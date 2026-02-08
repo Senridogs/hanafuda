@@ -24,6 +24,10 @@ import type { PeerTransport } from './transport.peer'
 
 type Unsubscribe = () => void
 
+function isOutOfTurnAllowedCommand(command: TurnCommand): boolean {
+  return command.type === 'restartGame' || command.type === 'startNextRound' || command.type === 'readyNextRound'
+}
+
 const COMMAND_PHASE_REQUIREMENTS: Partial<Record<TurnCommand['type'], KoiKoiGameState['phase']>> = {
   playHandCard: 'selectHandCard',
   selectHandMatch: 'selectFieldMatch',
@@ -34,6 +38,7 @@ const COMMAND_PHASE_REQUIREMENTS: Partial<Record<TurnCommand['type'], KoiKoiGame
   checkTurn: 'checkYaku',
   resolveKoiKoi: 'koikoiDecision',
   startNextRound: 'roundEnd',
+  readyNextRound: 'roundEnd',
 }
 
 function getCurrentPlayerId(state: KoiKoiGameState): PlayerId {
@@ -92,12 +97,14 @@ export function applyTurnCommand(state: KoiKoiGameState, command: TurnCommand): 
     case 'resolveKoiKoi':
       return resolveKoiKoi(state, command.decision)
     case 'startNextRound':
-      return startNextRound(state)
+      return startNextRound(state, command.seed)
+    case 'readyNextRound':
+      return state
     case 'restartGame':
       return createNewGame({
         ...state.config,
         maxRounds: command.maxRounds,
-      })
+      }, command.seed)
     default:
       return assertNever(command)
   }
@@ -168,7 +175,7 @@ export class HostSession {
       return createErrorMessage(this.roomId, 'unknown', 'Room ID mismatch')
     }
 
-    if (message.command.type !== 'restartGame') {
+    if (!isOutOfTurnAllowedCommand(message.command)) {
       const currentPlayerId = getCurrentPlayerId(this.state)
       if (message.from !== currentPlayerId) {
         return createErrorMessage(
@@ -185,6 +192,10 @@ export class HostSession {
         'invalid_phase',
         `Cannot execute ${message.command.type} during phase ${this.state.phase}`,
       )
+    }
+
+    if (message.command.type === 'readyNextRound') {
+      return createStateMessage(this.roomId, this.state, this.version, message.actionId)
     }
 
     const nextState = applyTurnCommand(this.state, message.command)

@@ -45,6 +45,11 @@ function withSeededRandom<T>(seed: number, run: () => T): T {
   }
 }
 
+function startCpuMatch(roundCount: 3 | 6 | 12 = 3): void {
+  fireEvent.click(screen.getByRole('button', { name: `${roundCount}月` }))
+  fireEvent.click(screen.getByRole('button', { name: 'CPU対戦' }))
+}
+
 type OpeningPattern = {
   readonly seed: number
   readonly unmatchedCardId: string
@@ -124,10 +129,23 @@ afterEach(() => {
 })
 
 describe('App interaction safeguards', () => {
+  it('requires selecting round count before starting CPU battle', () => {
+    render(<App />)
+
+    const cpuButton = screen.getByRole('button', { name: 'CPU対戦' }) as HTMLButtonElement
+    expect(cpuButton.disabled).toBe(true)
+    expect(screen.getByText('未選択')).toBeTruthy()
+    expect(screen.getByText('月数を選ぶまで対戦を開始できません。')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '6月' }))
+    expect(cpuButton.disabled).toBe(false)
+  })
+
   it('rejects unmatched card click when a matching card exists', () => {
     const pattern = findOpeningPattern()
     vi.useFakeTimers()
     const { container } = withSeededRandom(pattern.seed, () => render(<App />))
+    startCpuMatch()
 
     expect(screen.getByText('あなたの番: 手札を1枚選択')).toBeTruthy()
 
@@ -148,6 +166,7 @@ describe('App interaction safeguards', () => {
     const pattern = findCancelableSelectPattern()
     vi.useFakeTimers()
     const { container } = withSeededRandom(pattern.seed, () => render(<App />))
+    startCpuMatch()
 
     const handRack = container.querySelector('.player-rack')
     const selected = handRack?.querySelector<HTMLElement>(`[data-card-id="${pattern.cardId}"]`)
@@ -164,6 +183,7 @@ describe('App interaction safeguards', () => {
     const pattern = findCancelableSelectPattern()
     vi.useFakeTimers()
     const { container } = withSeededRandom(pattern.seed, () => render(<App />))
+    startCpuMatch()
 
     const handRack = container.querySelector('.player-rack')
     const selected = handRack?.querySelector<HTMLElement>(`[data-card-id="${pattern.cardId}"]`)
@@ -182,6 +202,7 @@ describe('App interaction safeguards', () => {
     const pattern = findCancelableSelectPattern()
     vi.useFakeTimers()
     const { container } = withSeededRandom(pattern.seed, () => render(<App />))
+    startCpuMatch()
 
     const handRack = container.querySelector('.player-rack')
     const selected = handRack?.querySelector<HTMLElement>(`[data-card-id="${pattern.cardId}"]`)
@@ -200,6 +221,7 @@ describe('App interaction safeguards', () => {
     vi.useFakeTimers()
     mockMatchMedia(true)
     const { container } = withSeededRandom(pattern.seed, () => render(<App />))
+    startCpuMatch()
 
     const initialHandCard = container.querySelector<HTMLElement>(`.player-rack [data-card-id="${pattern.matchedCardId}"]`)
     expect(initialHandCard).toBeTruthy()
@@ -233,6 +255,7 @@ describe('App interaction safeguards', () => {
     vi.useFakeTimers()
     mockMatchMedia(true)
     const { container } = withSeededRandom(pattern.seed, () => render(<App />))
+    startCpuMatch()
 
     const initialHandCard = container.querySelector<HTMLElement>(`.player-rack [data-card-id="${pattern.matchedCardId}"]`)
     expect(initialHandCard).toBeTruthy()
@@ -269,6 +292,7 @@ describe('App interaction safeguards', () => {
     vi.useFakeTimers()
     mockMatchMedia(true)
     const { container } = withSeededRandom(pattern.seed, () => render(<App />))
+    startCpuMatch()
 
     const initialHandCard = container.querySelector<HTMLElement>(`.player-rack [data-card-id="${pattern.matchedCardId}"]`)
     expect(initialHandCard).toBeTruthy()
@@ -297,6 +321,7 @@ describe('App interaction safeguards', () => {
     vi.useFakeTimers()
     mockMatchMedia(true)
     const { container } = withSeededRandom(pattern.seed, () => render(<App />))
+    startCpuMatch()
 
     const initialHandCard = container.querySelector<HTMLElement>(`.player-rack [data-card-id="${pattern.cardId}"]`)
     expect(initialHandCard).toBeTruthy()
@@ -319,6 +344,38 @@ describe('App interaction safeguards', () => {
     const expandedHandCardAgain = container.querySelector<HTMLElement>(`.player-rack.expanded [data-card-id="${pattern.cardId}"]`)
     expect(expandedHandCardAgain).toBeTruthy()
     fireEvent.click(expandedHandCardAgain as HTMLElement)
+
+    const emptyFieldSlotAgain = container.querySelector<HTMLElement>('.field-empty-slot-target')
+    expect(emptyFieldSlotAgain).toBeTruthy()
+    fireEvent.click(emptyFieldSlotAgain as HTMLElement)
+    expect(screen.getByText('山札から引いています')).toBeTruthy()
+  })
+
+  it('shows empty field slot for unmatched card and commits only by clicking that slot on desktop', () => {
+    const pattern = findNoMatchPattern()
+    vi.useFakeTimers()
+    mockMatchMedia(false)
+    const { container } = withSeededRandom(pattern.seed, () => render(<App />))
+    startCpuMatch()
+
+    const handCard = container.querySelector<HTMLElement>(`.player-rack [data-card-id="${pattern.cardId}"]`)
+    expect(handCard).toBeTruthy()
+    fireEvent.click(handCard as HTMLElement)
+
+    const emptyFieldSlot = container.querySelector<HTMLElement>('.field-empty-slot-target')
+    expect(emptyFieldSlot).toBeTruthy()
+    expect(screen.getByText('あなたの番: 手札を1枚選択')).toBeTruthy()
+    expect(screen.queryByText('山札から引いています')).toBeNull()
+
+    const fieldRow = container.querySelector<HTMLElement>('.field-row')
+    expect(fieldRow).toBeTruthy()
+    fireEvent.click(fieldRow as HTMLElement)
+    expect(container.querySelector('.field-empty-slot-target')).toBeNull()
+    expect(screen.getByText('あなたの番: 手札を1枚選択')).toBeTruthy()
+
+    const handCardAgain = container.querySelector<HTMLElement>(`.player-rack [data-card-id="${pattern.cardId}"]`)
+    expect(handCardAgain).toBeTruthy()
+    fireEvent.click(handCardAgain as HTMLElement)
 
     const emptyFieldSlotAgain = container.querySelector<HTMLElement>('.field-empty-slot-target')
     expect(emptyFieldSlotAgain).toBeTruthy()

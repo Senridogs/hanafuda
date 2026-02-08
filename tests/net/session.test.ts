@@ -224,6 +224,46 @@ describe('host session', () => {
     expect(response.state.phase).toBe('selectHandCard')
     expect(response.state.round).toBe(2)
   })
+
+  it('allows startNextRound from non-current player during roundEnd', () => {
+    const initial = createRoundEndState()
+    const host = new HostSession({
+      roomId: 'room-01',
+      initialState: initial,
+    })
+
+    const response = host.receiveAction(
+      createAction('player2', { type: 'startNextRound' }, 'a-6'),
+    )
+
+    expect(response.type).toBe('state')
+    if (response.type !== 'state') {
+      return
+    }
+    expect(response.version).toBe(1)
+    expect(response.state.phase).toBe('selectHandCard')
+    expect(response.state.round).toBe(2)
+  })
+
+  it('accepts readyNextRound during roundEnd without advancing state', () => {
+    const initial = createRoundEndState()
+    const host = new HostSession({
+      roomId: 'room-01',
+      initialState: initial,
+    })
+
+    const response = host.receiveAction(
+      createAction('player2', { type: 'readyNextRound', playerId: 'player2' }, 'a-7'),
+    )
+
+    expect(response.type).toBe('state')
+    if (response.type !== 'state') {
+      return
+    }
+    expect(response.version).toBe(0)
+    expect(response.state).toBe(initial)
+    expect(host.getVersion()).toBe(0)
+  })
 })
 
 describe('guest session', () => {

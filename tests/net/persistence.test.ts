@@ -3,8 +3,12 @@ import { createNewGame } from '../../src/engine/game'
 import {
   CHECKPOINT_TTL_MS,
   clearCheckpoint,
+  loadLastGuestRoomId,
+  loadLastHostRoomId,
   loadCheckpoint,
   saveCheckpoint,
+  saveLastGuestRoomId,
+  saveLastHostRoomId,
   type CheckpointPayload,
 } from '../../src/net/persistence'
 
@@ -76,5 +80,37 @@ describe('checkpoint persistence', () => {
 
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull()
     expect(loadCheckpoint(ROOM_ID)).toBeNull()
+  })
+})
+
+describe('last host room id persistence', () => {
+  it('supports save/load roundtrip', () => {
+    saveLastHostRoomId('ROOM-ABC123')
+
+    expect(loadLastHostRoomId()).toBe('ROOM-ABC123')
+  })
+
+  it('trims whitespace and rejects empty values', () => {
+    saveLastHostRoomId('   ')
+    expect(loadLastHostRoomId()).toBe('')
+
+    saveLastHostRoomId('  ROOM-XYZ789  ')
+    expect(loadLastHostRoomId()).toBe('ROOM-XYZ789')
+  })
+})
+
+describe('last guest room id persistence', () => {
+  it('supports save/load roundtrip', () => {
+    saveLastGuestRoomId('ROOM-GUEST001')
+
+    expect(loadLastGuestRoomId()).toBe('ROOM-GUEST001')
+  })
+
+  it('trims whitespace and rejects empty values', () => {
+    saveLastGuestRoomId('   ')
+    expect(loadLastGuestRoomId()).toBe('')
+
+    saveLastGuestRoomId('  ROOM-GUEST002  ')
+    expect(loadLastGuestRoomId()).toBe('ROOM-GUEST002')
   })
 })

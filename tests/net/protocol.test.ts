@@ -30,4 +30,20 @@ describe('net protocol schema', () => {
     const parsed = turnCommandSchema.safeParse(invalidCommand)
     expect(parsed.success).toBe(false)
   })
+
+  it('accepts readyNextRound commands', () => {
+    const parsed = turnCommandSchema.safeParse({
+      type: 'readyNextRound',
+      playerId: 'player2',
+    })
+    expect(parsed.success).toBe(true)
+  })
+
+  it('accepts seeded startNextRound commands', () => {
+    const parsed = turnCommandSchema.safeParse({
+      type: 'startNextRound',
+      seed: 123456789,
+    })
+    expect(parsed.success).toBe(true)
+  })
 })

@@ -115,6 +115,7 @@ type RuleHelpPage = {
 }
 
 const CPU_HAND_REVEAL_HOLD_RATIO = 0.52
+const COMMAND_SEED_RANGE = 0x1_0000_0000
 const HAND_LAYOUT_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1]
 const HAND_LAYOUT_TRANSITION = { layout: { duration: 0.82, ease: HAND_LAYOUT_EASE } }
 const CARD_MOVE_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1]
@@ -135,10 +136,12 @@ const TAP_MAX_DISTANCE_PX = 10
 const TAP_MAX_DURATION_MS = 300
 const FIELD_EMPTY_SLOT_TARGET_ID = '__field-empty-slot__'
 const EXPANDED_SELECTION_CANCEL_PULSE_MS = 120
-const KOIKOI_DECISION_EXTRA_DELAY_MS = 2000
-const AI_KOIKOI_DECISION_DELAY_MULTIPLIER = 2
-const AI_KOIKOI_DECISION_DELAY_MS =
-  (AI_THINK_DELAY_MS + KOIKOI_DECISION_EXTRA_DELAY_MS) * AI_KOIKOI_DECISION_DELAY_MULTIPLIER
+const AI_KOIKOI_DECISION_DELAY_MS = 0
+const YAKU_DROP_TIME_SCALE = 2
+const YAKU_DROP_CARD_STAGGER_SECONDS = 0.24 * YAKU_DROP_TIME_SCALE
+const YAKU_DROP_CARD_DURATION_SECONDS = 0.72 * YAKU_DROP_TIME_SCALE
+const YAKU_DROP_NAME_DURATION_SECONDS = 0.36 * YAKU_DROP_TIME_SCALE
+const YAKU_DROP_HOLD_MS = 360
 const TURN_DECISION_EFFECT_DURATION_MS = 2400
 const OPPONENT_KOIKOI_EFFECT_DURATION_MS = TURN_DECISION_EFFECT_DURATION_MS * 2
 const TURN_BANNER_AFTER_KOIKOI_DELAY_MS = TURN_DECISION_EFFECT_DURATION_MS + 140
@@ -270,6 +273,28 @@ const RULE_HELP_SCORING_NOTES: readonly string[] = [
 ] as const
 const RULE_HELP_CARD_ID_MAP = new Map(HANAFUDA_CARDS.map((card) => [card.id, card] as const))
 
+function createCommandSeed(): number {
+  return Math.floor(Math.random() * COMMAND_SEED_RANGE) >>> 0
+}
+
+function ensureDeterministicMultiplayerCommand(command: TurnCommand): TurnCommand {
+  if (command.type === 'startNextRound') {
+    return command.seed === undefined ? { ...command, seed: createCommandSeed() } : command
+  }
+  if (command.type === 'restartGame') {
+    return command.seed === undefined ? { ...command, seed: createCommandSeed() } : command
+  }
+  return command
+}
+
+function getYakuDropRevealDurationMs(cardCount: number): number {
+  const normalizedCardCount = Math.max(1, cardCount)
+  const cardRevealSeconds =
+    YAKU_DROP_CARD_DURATION_SECONDS + YAKU_DROP_CARD_STAGGER_SECONDS * (normalizedCardCount - 1)
+  const revealSeconds = Math.max(YAKU_DROP_NAME_DURATION_SECONDS, cardRevealSeconds)
+  return Math.round(revealSeconds * 1000) + YAKU_DROP_HOLD_MS
+}
+
 function getRuleHelpExampleCards(cardIds: readonly string[] | undefined): readonly HanafudaCard[] {
   if (!cardIds || cardIds.length === 0) {
     return []
@@ -296,9 +321,9 @@ function getPcYakuEntryRank(key: string): number {
   return 4
 }
 
-function buildRoundPointBreakdownLines(game: KoiKoiGameState): readonly string[] | undefined {
+function buildRoundPointBreakdownLines(game: KoiKoiGameState): readonly string[] {
   if (game.roundReason !== 'stop' || !game.roundWinner) {
-    return undefined
+    return []
   }
 
   const winnerIndex: 0 | 1 = game.roundWinner === 'player1' ? 0 : 1
@@ -563,7 +588,7 @@ function RoleYakuPanel(props: {
     [captured, yaku, blockedCardIds],
   )
   const visibleProgressEntries = useMemo(
-    () => buildVisibleYakuProgressEntries(progressEntries),
+    () => buildVisibleYakuProgressEntries(progressEntries, { includeDoneCards: true }),
     [progressEntries],
   )
   const pcOrderedProgressEntries = useMemo(
@@ -938,6 +963,7 @@ function RoundOverlay(props: {
   details?: ReactNode
   primaryActionLabel: string
   onPrimaryAction: () => void
+  primaryDisabled?: boolean
   secondaryActionLabel?: string
   onSecondaryAction?: () => void
 }) {
@@ -948,6 +974,7 @@ function RoundOverlay(props: {
     details,
     primaryActionLabel,
     onPrimaryAction,
+    primaryDisabled = false,
     secondaryActionLabel,
     onSecondaryAction,
   } = props
@@ -966,7 +993,7 @@ function RoundOverlay(props: {
           </ul>
         ) : null}
         <div className="overlay-actions">
-          <button type="button" className="primary" onClick={onPrimaryAction}>
+          <button type="button" className="primary" onClick={onPrimaryAction} disabled={primaryDisabled}>
             {primaryActionLabel}
           </button>
           {secondaryActionLabel && onSecondaryAction ? (
@@ -985,10 +1012,9 @@ function YakuDropEffect(props: {
   yaku: readonly Yaku[]
 }) {
   const { cards, yaku } = props
-  const timeScale = 2
-  const cardStagger = 0.24 * timeScale
-  const cardDuration = 0.72 * timeScale
-  const yakuNameDuration = 0.36 * timeScale
+  const cardStagger = YAKU_DROP_CARD_STAGGER_SECONDS
+  const cardDuration = YAKU_DROP_CARD_DURATION_SECONDS
+  const yakuNameDuration = YAKU_DROP_NAME_DURATION_SECONDS
   const yakuLabel = yaku.map((item) => item.name).join(' ・ ')
 
   return (
@@ -1428,6 +1454,7 @@ function App() {
   }))
   const appContainerRef = useRef<HTMLDivElement>(null)
   const [isMatchSurfaceVisible, setIsMatchSurfaceVisible] = useState(false)
+  const [selectedRoundCount, setSelectedRoundCount] = useState<(typeof ROUND_COUNT_OPTIONS)[number] | null>(null)
   const [pendingHandPlaceholder, setPendingHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
   const [pendingAiHandPlaceholder, setPendingAiHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
 
@@ -1442,6 +1469,10 @@ function App() {
   const [expandedSelectionPulseCardId, setExpandedSelectionPulseCardId] = useState<string | null>(null)
   const expandedSelectionPulseTimerRef = useRef<number | null>(null)
   const pendingExpandedFieldSelectionRef = useRef<string | null>(null)
+  const [isKoikoiDecisionYakuVisible, setIsKoikoiDecisionYakuVisible] = useState(false)
+  const [isKoikoiDecisionChoiceVisible, setIsKoikoiDecisionChoiceVisible] = useState(false)
+  const koikoiDecisionSequenceKeyRef = useRef<string | null>(null)
+  const koikoiDecisionYakuTimerRef = useRef<number | null>(null)
   const [handDrag, setHandDrag] = useState<HandDragState | null>(null)
   const prevPhaseRef = useRef(game.phase)
   const rectMapRef = useRef<Map<string, DOMRect>>(new Map())
@@ -1461,7 +1492,6 @@ function App() {
   const localPlayerIndex = multiplayer.localPlayerIndex
   const opponentPlayerIndex: 0 | 1 = localPlayerIndex === 0 ? 1 : 0
 
-  const activePlayer = game.players[game.currentPlayerIndex]
   const humanPlayer = game.players[localPlayerIndex]
   const aiPlayer = game.players[opponentPlayerIndex]
   const aiPanelView = {
@@ -1484,11 +1514,18 @@ function App() {
     () => buildVisibleYakuProgressEntries(buildYakuProgressEntries(humanPanelView.captured, humanPanelView.completedYaku, humanBlockedCardIds)),
     [humanPanelView.captured, humanPanelView.completedYaku, humanBlockedCardIds],
   )
+  const clearKoikoiDecisionSequenceTimers = useCallback((): void => {
+    if (koikoiDecisionYakuTimerRef.current !== null) {
+      window.clearTimeout(koikoiDecisionYakuTimerRef.current)
+      koikoiDecisionYakuTimerRef.current = null
+    }
+  }, [])
   const isLocalTurn = game.currentPlayerIndex === localPlayerIndex
   const isAiTurn = !isLocalTurn
   const isCpuAiTurn = multiplayer.mode === 'cpu' && isAiTurn
   const canAutoAdvance = multiplayer.mode === 'cpu' || isLocalTurn
   const isLobbyConnected = multiplayer.mode !== 'cpu' && multiplayer.connectionStatus === 'connected'
+  const isKoikoiDecisionSequencing = game.phase === 'koikoiDecision' && !isKoikoiDecisionChoiceVisible
   const koikoiEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'koikoi')
   const stopEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'stop')
   const interactionLocked = moveEffects.length > 0 || koikoiEffectActive
@@ -1654,15 +1691,22 @@ function App() {
 
 
   useEffect(() => {
-    if (multiplayer.mode === 'cpu') {
-      setIsMatchSurfaceVisible(true)
-      return
-    }
     if (multiplayer.connectionStatus === 'connected') {
       setIsMatchSurfaceVisible(true)
       setIsChromeCollapsed(true)
     }
   }, [multiplayer.connectionStatus, multiplayer.mode])
+
+  useEffect(() => {
+    if (!isMatchSurfaceVisible && multiplayer.mode === 'cpu') {
+      return
+    }
+    const nextRoundCount = game.config.maxRounds as (typeof ROUND_COUNT_OPTIONS)[number]
+    if (!ROUND_COUNT_OPTIONS.includes(nextRoundCount)) {
+      return
+    }
+    setSelectedRoundCount((current) => (current === nextRoundCount ? current : nextRoundCount))
+  }, [game.config.maxRounds, isMatchSurfaceVisible, multiplayer.mode])
 
   // Fullscreen change event listener to sync state when user exits fullscreen via ESC/back button
   useEffect(() => {
@@ -1877,6 +1921,9 @@ function App() {
   }, [])
 
   const phaseMessage = useMemo(() => {
+    if (game.phase === 'koikoiDecision' && isKoikoiDecisionSequencing) {
+      return '役を表示しています'
+    }
     if (multiplayer.mode === 'cpu') {
       return getPhaseMessage(game, isCpuAiTurn)
     }
@@ -1907,15 +1954,57 @@ function App() {
       default:
         return '対局中'
     }
-  }, [game, humanPlayer.id, isCpuAiTurn, isLocalTurn, multiplayer.mode])
+  }, [game, humanPlayer.id, isCpuAiTurn, isKoikoiDecisionSequencing, isLocalTurn, multiplayer.mode])
   const roundPointBreakdownLines = useMemo(() => buildRoundPointBreakdownLines(game), [game])
   const sortedNewYaku = useMemo(
     () => [...game.newYaku].sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'ja')),
     [game.newYaku],
   )
+  const koikoiDecisionDropCards = useMemo(
+    () => flattenNewYakuCards(sortedNewYaku),
+    [sortedNewYaku],
+  )
   const koikoiDecisionYakuLines = useMemo(() => {
     return sortedNewYaku.map((item) => `${item.name} (${item.points}点)`)
   }, [sortedNewYaku])
+  useEffect(() => {
+    if (game.phase !== 'koikoiDecision') {
+      koikoiDecisionSequenceKeyRef.current = null
+      clearKoikoiDecisionSequenceTimers()
+      setIsKoikoiDecisionYakuVisible(false)
+      setIsKoikoiDecisionChoiceVisible(false)
+      return
+    }
+
+    const sequenceKey = `${game.round}-${game.currentPlayerIndex}-${game.turnHistory.length}`
+    if (koikoiDecisionSequenceKeyRef.current === sequenceKey) {
+      return
+    }
+    koikoiDecisionSequenceKeyRef.current = sequenceKey
+    clearKoikoiDecisionSequenceTimers()
+    setIsKoikoiDecisionChoiceVisible(false)
+
+    if (koikoiDecisionDropCards.length === 0) {
+      setIsKoikoiDecisionYakuVisible(false)
+      setIsKoikoiDecisionChoiceVisible(true)
+      return
+    }
+
+    setIsKoikoiDecisionYakuVisible(true)
+    koikoiDecisionYakuTimerRef.current = window.setTimeout(() => {
+      setIsKoikoiDecisionYakuVisible(false)
+      koikoiDecisionYakuTimerRef.current = null
+      setIsKoikoiDecisionChoiceVisible(true)
+    }, getYakuDropRevealDurationMs(koikoiDecisionDropCards.length))
+  }, [
+    clearKoikoiDecisionSequenceTimers,
+    game.currentPlayerIndex,
+    game.phase,
+    game.round,
+    game.turnHistory.length,
+    koikoiDecisionDropCards.length,
+  ])
+  useEffect(() => () => clearKoikoiDecisionSequenceTimers(), [clearKoikoiDecisionSequenceTimers])
 
   const playerIntent: TurnIntent = useMemo(() => getTurnIntent(game.phase), [game.phase])
 
@@ -2051,8 +2140,9 @@ function App() {
     return new Set(matches.map((card) => card.id))
   }, [expandedSelectedCardId, game.field, humanPlayer.hand, isAiTurn, isHandExpanded, playerIntent])
   const expandedSelectedNoMatchCardId = useMemo(() => {
+    const allowSelectedCardFieldCommit = isHandExpanded || !useMobileViewLayout
     if (
-      !isHandExpanded ||
+      !allowSelectedCardFieldCommit ||
       !expandedSelectedCardId ||
       isAiTurn ||
       playerIntent !== 'play'
@@ -2065,15 +2155,15 @@ function App() {
     }
     const matches = getMatchingFieldCards(selectedCard, game.field)
     return matches.length === 0 ? selectedCard.id : null
-  }, [expandedSelectedCardId, game.field, humanPlayer.hand, isAiTurn, isHandExpanded, playerIntent])
+  }, [expandedSelectedCardId, game.field, humanPlayer.hand, isAiTurn, isHandExpanded, playerIntent, useMobileViewLayout])
 
   const dropYaku = useMemo(
-    () => (game.phase === 'koikoiDecision' ? sortedNewYaku : []),
-    [game.phase, sortedNewYaku],
+    () => (game.phase === 'koikoiDecision' && isKoikoiDecisionYakuVisible ? sortedNewYaku : []),
+    [game.phase, isKoikoiDecisionYakuVisible, sortedNewYaku],
   )
   const dropCards = useMemo(
-    () => (game.phase === 'koikoiDecision' ? flattenNewYakuCards(sortedNewYaku) : []),
-    [game.phase, sortedNewYaku],
+    () => (game.phase === 'koikoiDecision' && isKoikoiDecisionYakuVisible ? koikoiDecisionDropCards : []),
+    [game.phase, isKoikoiDecisionYakuVisible, koikoiDecisionDropCards],
   )
   const deckRevealCard = useMemo(() => {
     if (game.phase !== 'drawReveal' && game.phase !== 'selectDrawMatch') {
@@ -2401,33 +2491,35 @@ function App() {
         setGame((current) => resolveKoiKoi(current, command.decision))
         return
       case 'startNextRound':
-        setGame((current) => startNextRound(current))
+        setGame((current) => startNextRound(current, command.seed))
+        return
+      case 'readyNextRound':
         return
       case 'restartGame':
         setGame((current) => createNewGame({
           ...current.config,
           maxRounds: command.maxRounds,
-        }))
+        }, command.seed))
         return
     }
   }, [localPlayerIndex, resolveCaptureSelection])
 
-  const executeTurnCommand = useCallback((command: TurnCommand): void => {
+  const executeTurnCommand = useCallback((command: TurnCommand): boolean => {
     if (multiplayer.mode === 'cpu') {
       executeTurnCommandLocal(command)
-      return
+      return true
     }
 
-    if (multiplayer.mode === 'p2p-host' && multiplayer.connectionStatus !== 'connected') {
-      executeTurnCommandLocal(command)
-      return
-    }
-
-    const sent = multiplayer.sendTurnCommand(command)
+    const normalizedCommand = ensureDeterministicMultiplayerCommand(command)
+    const sent = multiplayer.sendTurnCommand(normalizedCommand)
     if (!sent) {
-      return
+      return false
     }
-    executeTurnCommandLocal(command)
+    // Host is authoritative. Guest applies actions only after host relays them back.
+    if (multiplayer.mode === 'p2p-host') {
+      executeTurnCommandLocal(normalizedCommand)
+    }
+    return true
   }, [executeTurnCommandLocal, multiplayer])
 
   useEffect(() => {
@@ -2709,7 +2801,7 @@ function App() {
   }, [canAutoAdvance, executeTurnCommand, game.phase, interactionLocked])
 
   useEffect(() => {
-    if (!isCpuAiTurn || game.phase !== 'koikoiDecision' || interactionLocked) {
+    if (!isCpuAiTurn || game.phase !== 'koikoiDecision' || interactionLocked || isKoikoiDecisionSequencing) {
       return
     }
 
@@ -2722,7 +2814,7 @@ function App() {
     }, AI_KOIKOI_DECISION_DELAY_MS)
 
     return () => window.clearTimeout(timer)
-  }, [executeTurnCommand, game.phase, interactionLocked, isCpuAiTurn, opponentPlayerIndex])
+  }, [executeTurnCommand, game.phase, interactionLocked, isCpuAiTurn, isKoikoiDecisionSequencing, opponentPlayerIndex])
 
   const handlePlayCard = useCallback((card: HanafudaCard): void => {
     if (isAiTurn || interactionLocked || playerIntent !== 'play') {
@@ -2752,6 +2844,18 @@ function App() {
     setIsHandExpanded(false)
     setExpandedSelectedCardId(null)
   }, [clearExpandedSelectionPulseTimer])
+  useEffect(() => {
+    if (useMobileViewLayout || !isHandExpanded) {
+      return
+    }
+    closeExpandedHand()
+  }, [closeExpandedHand, isHandExpanded, useMobileViewLayout])
+  useEffect(() => {
+    if (!isHandExpanded || game.phase !== 'koikoiDecision') {
+      return
+    }
+    closeExpandedHand()
+  }, [closeExpandedHand, game.phase, isHandExpanded])
   const clearExpandedHandSelection = useCallback((): void => {
     clearExpandedSelectionPulseTimer()
     setExpandedSelectionPulseCardId(null)
@@ -2772,8 +2876,9 @@ function App() {
   }, [clearExpandedSelectionPulseTimer, expandedSelectedCardId])
 
   const tryCommitExpandedSelectedCardToField = useCallback((targetFieldCardId?: string): boolean => {
+    const canCommitSelectedCard = isHandExpanded || !useMobileViewLayout
     if (
-      !isHandExpanded ||
+      !canCommitSelectedCard ||
       !expandedSelectedCardId ||
       isAiTurn ||
       interactionLocked ||
@@ -2822,6 +2927,7 @@ function App() {
     isAiTurn,
     isHandExpanded,
     playerIntent,
+    useMobileViewLayout,
   ])
   const handleEmptyFieldSlotClick = useCallback((event: MouseEvent<HTMLButtonElement>): void => {
     event.preventDefault()
@@ -2873,6 +2979,40 @@ function App() {
     interactionLocked,
     isAiTurn,
     isHandExpanded,
+    matchableHandIds,
+    mustPlayMatchingHandCard,
+    playerIntent,
+  ])
+  const handleDesktopHandCardClick = useCallback((card: HanafudaCard): void => {
+    if (isAiTurn || interactionLocked || playerIntent !== 'play') {
+      return
+    }
+    if (mustPlayMatchingHandCard && !matchableHandIds.has(card.id)) {
+      return
+    }
+    if (expandedSelectedCardId === card.id) {
+      clearExpandedHandSelection()
+      return
+    }
+
+    const matches = getMatchingFieldCards(card, game.field)
+    if (matches.length > 0) {
+      clearExpandedHandSelection()
+      handlePlayCard(card)
+      return
+    }
+
+    clearExpandedSelectionPulseTimer()
+    setExpandedSelectionPulseCardId(null)
+    setExpandedSelectedCardId(card.id)
+  }, [
+    clearExpandedHandSelection,
+    clearExpandedSelectionPulseTimer,
+    expandedSelectedCardId,
+    game.field,
+    handlePlayCard,
+    interactionLocked,
+    isAiTurn,
     matchableHandIds,
     mustPlayMatchingHandCard,
     playerIntent,
@@ -2974,6 +3114,15 @@ function App() {
   const handleBoardClick = useCallback((event: MouseEvent<HTMLElement>): void => {
     // 拡大中は、手札外クリックで選択解除/縮小（場札選択中は維持）
     const target = event.target as HTMLElement | null
+    const tappedHandCard = Boolean(target?.closest('.player-rack [data-card-id]'))
+    if (
+      !isHandExpanded &&
+      expandedSelectedCardId &&
+      playerIntent === 'play' &&
+      !tappedHandCard
+    ) {
+      clearExpandedHandSelection()
+    }
     const tappedFieldCardForSelection = Boolean(target?.closest('.field-rack-inner [data-card-id]'))
     const keepExpandedForFieldSelection =
       isHandExpanded &&
@@ -3029,6 +3178,7 @@ function App() {
     closeExpandedHand,
     game.pendingSource,
     game.phase,
+    clearExpandedHandSelection,
     handleCancelHandSelection,
     interactionLocked,
     isAiTurn,
@@ -3108,17 +3258,21 @@ function App() {
   }, [])
 
   const handleSwitchToCpu = useCallback((): void => {
+    if (selectedRoundCount === null) {
+      return
+    }
     setIsMatchSurfaceVisible(true)
     setIsChromeCollapsed(true)
     resetTransientUiState()
     multiplayer.teardownToCpu()
     setGame(createNewGame({
       ...game.config,
+      maxRounds: selectedRoundCount,
       enableAI: true,
       player1Name: DEFAULT_CONFIG.player1Name,
       player2Name: DEFAULT_CONFIG.player2Name,
     }))
-  }, [game.config, multiplayer, resetTransientUiState])
+  }, [game.config, multiplayer, resetTransientUiState, selectedRoundCount])
 
   const handleChangeAiDifficulty = useCallback((difficulty: 'yowai' | 'futsuu' | 'tsuyoi' | 'yabai' | 'oni' | 'kami'): void => {
     if (multiplayer.mode !== 'cpu') {
@@ -3131,18 +3285,22 @@ function App() {
   }, [game.config, multiplayer.mode])
 
   const handleStartHost = useCallback((): void => {
+    if (selectedRoundCount === null) {
+      return
+    }
     setIsMatchSurfaceVisible(false)
     setIsChromeCollapsed(false)  // 部屋作成時はヘッダーを隠さない
     resetTransientUiState()
     const initial = createNewGame({
       ...game.config,
+      maxRounds: selectedRoundCount,
       enableAI: false,
       player1Name: 'あなた',
       player2Name: '相手',
     })
     setGame(initial)
     multiplayer.startHost(initial)
-  }, [game.config, isMobileLayout, multiplayer, resetTransientUiState])
+  }, [game.config, multiplayer, resetTransientUiState, selectedRoundCount])
 
   const handleJoinGuest = useCallback((): void => {
     setIsMatchSurfaceVisible(false)
@@ -3161,6 +3319,7 @@ function App() {
   const handleLeaveMultiplayer = useCallback((): void => {
     setIsMatchSurfaceVisible(false)
     setIsChromeCollapsed(isMobileLayout)
+    setSelectedRoundCount(null)
     resetTransientUiState()
     multiplayer.leaveMultiplayer()
     setGame(createNewGame({
@@ -3193,34 +3352,52 @@ function App() {
 
   const handleRestart = useCallback((): void => {
     if (isLobbyConnected) {
+      const currentMaxRounds = ROUND_COUNT_OPTIONS.includes(game.config.maxRounds as (typeof ROUND_COUNT_OPTIONS)[number])
+        ? (game.config.maxRounds as (typeof ROUND_COUNT_OPTIONS)[number])
+        : ROUND_COUNT_OPTIONS[0]
+      resetTransientUiState()
+      executeTurnCommand({ type: 'restartGame', maxRounds: currentMaxRounds })
       return
     }
     restartWithConfig(game.config)
-  }, [game.config, isLobbyConnected, restartWithConfig])
+  }, [executeTurnCommand, game.config, isLobbyConnected, resetTransientUiState, restartWithConfig])
 
   const hasMatchStarted = game.round > 1 || game.turnHistory.length > 0 || game.phase !== 'selectHandCard'
   const canSelectRoundCount = !hasMatchStarted && !isLobbyConnected
   const handleSelectRoundCount = useCallback((maxRounds: (typeof ROUND_COUNT_OPTIONS)[number]): void => {
-    if (!canSelectRoundCount || game.config.maxRounds === maxRounds) {
+    setSelectedRoundCount(maxRounds)
+    if (!isMatchSurfaceVisible || !canSelectRoundCount || game.config.maxRounds === maxRounds) {
       return
     }
     if (multiplayer.mode !== 'cpu') {
-      const sent = multiplayer.sendTurnCommand({ type: 'restartGame', maxRounds })
-      if (!sent) {
-        return
-      }
       resetTransientUiState()
-      setGame((current) => createNewGame({
-        ...current.config,
-        maxRounds,
-      }))
+      executeTurnCommand({ type: 'restartGame', maxRounds })
       return
     }
     restartWithConfig({
       ...game.config,
       maxRounds,
     })
-  }, [canSelectRoundCount, game.config, multiplayer, resetTransientUiState, restartWithConfig])
+  }, [canSelectRoundCount, executeTurnCommand, game.config, isMatchSurfaceVisible, multiplayer.mode, resetTransientUiState, restartWithConfig])
+  const handleRequestNextRound = useCallback((): void => {
+    setPendingHandPlaceholder(null)
+    setPendingAiHandPlaceholder(null)
+    if (multiplayer.mode === 'cpu') {
+      executeTurnCommand({ type: 'startNextRound' })
+      return
+    }
+    if (multiplayer.connectionStatus !== 'connected') {
+      return
+    }
+    executeTurnCommand({ type: 'startNextRound' })
+  }, [
+    executeTurnCommand,
+    multiplayer.connectionStatus,
+    multiplayer.mode,
+  ])
+  const roundEndPrimaryActionLabel = '次の月へ'
+  const roundEndPrimaryActionDisabled = multiplayer.mode !== 'cpu' && multiplayer.connectionStatus !== 'connected'
+  const roundEndMessageLines = roundPointBreakdownLines
 
 
   const fieldRow = (
@@ -3237,8 +3414,6 @@ function App() {
         }
       />
       <div className="field-rack">
-        <div className="draw-slot" />
-
         <div className="card-rack field-rack-inner">
           {game.field.map((card) => {
             if (hiddenFieldCardIds.has(card.id)) {
@@ -3342,7 +3517,11 @@ function App() {
             <header className="topbar">
               <div>
                 <h1>花札 こいこい</h1>
-                <p>第 {game.round} / {game.config.maxRounds} 月</p>
+                <p>
+                  {selectedRoundCount === null && !isMatchSurfaceVisible && multiplayer.mode === 'cpu'
+                    ? '月数を選択して対戦を開始'
+                    : `第 ${game.round} / ${selectedRoundCount ?? game.config.maxRounds} 月`}
+                </p>
               </div>
               <div className="topbar-actions">
                 {game.phase !== 'roundEnd' && game.phase !== 'gameOver' && game.phase !== 'waiting' && game.phase !== 'dealing' ? (
@@ -3351,19 +3530,6 @@ function App() {
                   </span>
                 ) : null}
                 <span className="visually-hidden" aria-live="polite">{phaseMessage}</span>
-                <div className="round-count-selector" aria-label="月数選択">
-                  {ROUND_COUNT_OPTIONS.map((roundCount) => (
-                    <button
-                      key={roundCount}
-                      type="button"
-                      className={`round-count-button ${game.config.maxRounds === roundCount ? 'active' : ''}`}
-                      onClick={() => handleSelectRoundCount(roundCount)}
-                      disabled={!canSelectRoundCount}
-                    >
-                      {roundCount}月
-                    </button>
-                  ))}
-                </div>
                 <button type="button" onClick={handleRestart} disabled={isLobbyConnected}>
                   最初から
                 </button>
@@ -3375,6 +3541,8 @@ function App() {
               connectionStatus={multiplayer.connectionStatus}
               connectionLogs={multiplayer.connectionLogs}
               roomId={multiplayer.roomId}
+              hostRoomId={multiplayer.hostRoomId}
+              onHostRoomIdChange={multiplayer.setHostRoomId}
               joinRoomId={multiplayer.joinRoomId}
               onJoinRoomIdChange={multiplayer.setJoinRoomId}
               onSwitchToCpu={handleSwitchToCpu}
@@ -3382,6 +3550,10 @@ function App() {
               onJoinGuest={handleJoinGuest}
               onReconnect={() => multiplayer.reconnect(gameRef.current)}
               onLeave={handleLeaveMultiplayer}
+              roundCountOptions={ROUND_COUNT_OPTIONS}
+              selectedRoundCount={selectedRoundCount}
+              canSelectRoundCount={canSelectRoundCount}
+              onSelectRoundCount={handleSelectRoundCount}
             />
 
             {multiplayer.mode === 'cpu' ? (
@@ -3571,9 +3743,9 @@ function App() {
             )}
 
             <div
-              className={`card-rack player-rack ${useMobileViewLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === localPlayerIndex ? 'active-turn' : ''} ${isHandExpanded ? 'expanded' : ''} ${isHandExpanded && expandedRackTop !== null ? 'expanded-top-aligned' : ''}`}
+              className={`card-rack player-rack ${useMobileViewLayout ? 'hand-flat' : ''} ${game.currentPlayerIndex === localPlayerIndex ? 'active-turn' : ''} ${useMobileViewLayout && isHandExpanded ? 'expanded' : ''} ${useMobileViewLayout && isHandExpanded && expandedRackTop !== null ? 'expanded-top-aligned' : ''}`}
               style={
-                isHandExpanded && expandedRackTop !== null
+                useMobileViewLayout && isHandExpanded && expandedRackTop !== null
                   ? ({ '--expanded-rack-top': `${expandedRackTop}px` } as CSSProperties)
                   : undefined
               }
@@ -3640,6 +3812,9 @@ function App() {
                 const selectable = !isAiTurn && !interactionLocked && playerIntent === 'play'
                 const highlighted = selectable && matchableHandIds.has(card.id)
                 const dimmed = false
+                const selectedForFieldCommit =
+                  expandedSelectedCardId === card.id &&
+                  (isHandExpanded || !useMobileViewLayout)
 
                 return (
                   <CardTile
@@ -3648,8 +3823,8 @@ function App() {
                     selectable={selectable}
                     highlighted={highlighted}
                     dimmed={dimmed}
-                    raised={isHandExpanded && expandedSelectedCardId === card.id}
-                    tapPulse={isHandExpanded && expandedSelectionPulseCardId === card.id}
+                    raised={selectedForFieldCommit}
+                    tapPulse={selectedForFieldCommit && expandedSelectionPulseCardId === card.id}
                     tilt={baseTilt}
                     dragX={dragX}
                     dragY={dragY}
@@ -3684,7 +3859,7 @@ function App() {
                     onClick={
                       useMobileViewLayout
                         ? () => handleExpandedHandCardClick(card)
-                        : () => handlePlayCard(card)
+                        : () => handleDesktopHandCardClick(card)
                     }
                   />
                 )
@@ -3928,10 +4103,10 @@ function App() {
         }}
       />
 
-      {game.phase === 'koikoiDecision' && !isAiTurn ? (
+      {game.phase === 'koikoiDecision' && !isAiTurn && isKoikoiDecisionChoiceVisible ? (
         <RoundOverlay
           title="役がそろいました"
-          message={`現在 ${getYakuTotalPoints(activePlayer.completedYaku)}点。新規役:`}
+          message="新規役:"
           messageLines={koikoiDecisionYakuLines}
           primaryActionLabel="ここで上がる"
           onPrimaryAction={() => executeTurnCommand({ type: 'resolveKoiKoi', decision: 'stop' })}
@@ -3948,13 +4123,10 @@ function App() {
               ? `${game.roundWinner === humanPlayer.id ? 'あなた' : '相手'}の勝利。${game.roundPoints}点を獲得しました。`
               : 'この月は引き分けです。'
           }
-          messageLines={roundPointBreakdownLines}
-          primaryActionLabel="次の月へ"
-          onPrimaryAction={() => {
-            setPendingHandPlaceholder(null)
-            setPendingAiHandPlaceholder(null)
-            executeTurnCommand({ type: 'startNextRound' })
-          }}
+          messageLines={roundEndMessageLines}
+          primaryActionLabel={roundEndPrimaryActionLabel}
+          onPrimaryAction={handleRequestNextRound}
+          primaryDisabled={roundEndPrimaryActionDisabled}
         />
       ) : null}
 

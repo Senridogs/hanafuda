@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { createNewGame, type KoiKoiGameState } from '../engine/game'
+import { calculateYaku } from '../engine/yaku'
+import type { Player } from '../engine/types'
 import type { ActionMessage, NetMessage, TurnCommand } from '../net/protocol'
 import {
   clearCheckpoint,
+  loadLastGuestRoomId,
+  loadLastHostRoomId,
   loadCheckpoint,
+  saveLastGuestRoomId,
   saveCheckpoint,
+  saveLastHostRoomId,
   saveSessionMeta,
   clearSessionMeta,
 } from '../net/persistence'
@@ -28,6 +34,10 @@ interface NetworkSession {
 
 const DEFAULT_CONNECTION_STATUS: ConnectionStatus = 'disconnected'
 const MAX_RECENT_ACTION_IDS = 256
+const HOST_AUTO_RECOVERY_DELAY_MS = 200
+const GUEST_AUTO_RECOVERY_DELAY_MS = 1200
+const HEARTBEAT_INTERVAL_MS = 4000
+const HEARTBEAT_TIMEOUT_MS = 12000
 
 function generateRoomId(): string {
   const random = Math.random().toString(36).slice(2, 8).toUpperCase()
@@ -44,15 +54,69 @@ function getLocalPlayerId(mode: MultiplayerMode): 'player1' | 'player2' | null {
   return null
 }
 
+function isOutOfTurnAllowedCommand(command: TurnCommand): boolean {
+  return command.type === 'restartGame' || command.type === 'startNextRound' || command.type === 'readyNextRound'
+}
+
+function compactStateForSnapshot(state: KoiKoiGameState): KoiKoiGameState {
+  const player1 = state.players[0]
+  const player2 = state.players[1]
+  const hasHeavyPayload =
+    state.turnHistory.length > 0 || state.newYaku.length > 0 || player1.completedYaku.length > 0 || player2.completedYaku.length > 0
+  if (!hasHeavyPayload) {
+    return state
+  }
+  const compactPlayers: readonly [Player, Player] = [
+    {
+      ...player1,
+      completedYaku: [],
+    },
+    {
+      ...player2,
+      completedYaku: [],
+    },
+  ]
+  return {
+    ...state,
+    players: compactPlayers,
+    newYaku: [],
+    turnHistory: [],
+  }
+}
+
+function hydrateStateSnapshot(state: KoiKoiGameState): KoiKoiGameState {
+  const player1 = state.players[0]
+  const player2 = state.players[1]
+  const hydratedPlayers: readonly [Player, Player] = [
+    {
+      ...player1,
+      completedYaku: calculateYaku(player1.captured),
+    },
+    {
+      ...player2,
+      completedYaku: calculateYaku(player2.captured),
+    },
+  ]
+  return {
+    ...state,
+    players: hydratedPlayers,
+  }
+}
+
 export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
   const { game, setGame, onRemoteCommand } = options
   const [mode, setMode] = useState<MultiplayerMode>('cpu')
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(DEFAULT_CONNECTION_STATUS)
   const [connectionLogs, setConnectionLogs] = useState<string[]>([])
   const [roomId, setRoomId] = useState('')
-  const [joinRoomId, setJoinRoomId] = useState('')
+  const [hostRoomId, setHostRoomId] = useState(() => loadLastHostRoomId())
+  const [joinRoomId, setJoinRoomId] = useState(() => loadLastGuestRoomId())
 
   const networkSessionRef = useRef<NetworkSession | null>(null)
+  const hostRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const guestRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastInboundAtRef = useRef(0)
   const actionSequenceRef = useRef(0)
   const versionRef = useRef(0)
   const modeRef = useRef<MultiplayerMode>('cpu')
@@ -77,12 +141,43 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     onRemoteCommandRef.current = onRemoteCommand
   }, [onRemoteCommand])
 
+  const clearHostRecoveryTimer = useCallback(() => {
+    if (hostRecoveryTimerRef.current === null) {
+      return
+    }
+    clearTimeout(hostRecoveryTimerRef.current)
+    hostRecoveryTimerRef.current = null
+  }, [])
+
+  const clearGuestRecoveryTimer = useCallback(() => {
+    if (guestRecoveryTimerRef.current === null) {
+      return
+    }
+    clearTimeout(guestRecoveryTimerRef.current)
+    guestRecoveryTimerRef.current = null
+  }, [])
+
+  const clearHeartbeatTimer = useCallback(() => {
+    if (heartbeatTimerRef.current === null) {
+      return
+    }
+    clearInterval(heartbeatTimerRef.current)
+    heartbeatTimerRef.current = null
+  }, [])
+
+  const markNetworkInbound = useCallback(() => {
+    lastInboundAtRef.current = Date.now()
+  }, [])
+
   const shutdownNetwork = useCallback(() => {
+    clearHostRecoveryTimer()
+    clearGuestRecoveryTimer()
+    clearHeartbeatTimer()
     networkSessionRef.current?.subscriptions.forEach((unsubscribe) => unsubscribe())
     networkSessionRef.current?.transport.close()
     networkSessionRef.current = null
     recentActionIdsRef.current = []
-  }, [])
+  }, [clearGuestRecoveryTimer, clearHeartbeatTimer, clearHostRecoveryTimer])
 
   const appendConnectionLog = useCallback((message: string): void => {
     const timestamp = new Date().toLocaleTimeString('ja-JP', { hour12: false })
@@ -95,13 +190,18 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     })
   }, [])
 
+  const forceConnectionError = useCallback((reason: string): void => {
+    appendConnectionLog(reason)
+    shutdownNetwork()
+    setConnectionStatus('error')
+  }, [appendConnectionLog, shutdownNetwork])
+
   const teardownToCpu = useCallback(() => {
     shutdownNetwork()
     setMode('cpu')
     setConnectionStatus(DEFAULT_CONNECTION_STATUS)
     setConnectionLogs([])
     setRoomId('')
-    setJoinRoomId('')
   }, [shutdownNetwork])
 
   useEffect(() => {
@@ -123,19 +223,45 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
   }, [game, mode, roomId])
 
   const sendSnapshot = useCallback((transport: PeerTransport, targetRoomId: string): void => {
+    const snapshot = compactStateForSnapshot(gameRef.current)
     transport.send({
       type: 'state',
       roomId: targetRoomId,
       version: versionRef.current,
-      state: gameRef.current,
+      state: snapshot,
     })
   }, [])
 
-  const applyRestartGame = useCallback((maxRounds: 3 | 6 | 12): void => {
+  useEffect(() => {
+    clearHeartbeatTimer()
+    if (mode === 'cpu' || connectionStatus !== 'connected') {
+      return
+    }
+    lastInboundAtRef.current = Date.now()
+    heartbeatTimerRef.current = setInterval(() => {
+      const network = networkSessionRef.current
+      if (!network) {
+        return
+      }
+      const now = Date.now()
+      if (now - lastInboundAtRef.current > HEARTBEAT_TIMEOUT_MS) {
+        forceConnectionError(`接続監視: 応答なし (${Math.round(HEARTBEAT_TIMEOUT_MS / 1000)}秒)`)
+        return
+      }
+      const sent = network.transport.send({ type: 'ping', t: now })
+      if (!sent) {
+        forceConnectionError('接続監視: ping送信失敗')
+      }
+    }, HEARTBEAT_INTERVAL_MS)
+
+    return clearHeartbeatTimer
+  }, [clearHeartbeatTimer, connectionStatus, forceConnectionError, mode])
+
+  const applyRestartGame = useCallback((maxRounds: 3 | 6 | 12, seed?: number): void => {
     const nextState = createNewGame({
       ...gameRef.current.config,
       maxRounds,
-    })
+    }, seed)
     gameRef.current = nextState
     setGame(nextState)
   }, [setGame])
@@ -145,7 +271,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     fixedRoomId?: string,
     restoreFromCheckpoint = true,
   ) => {
-    const nextRoomId = fixedRoomId?.trim() || generateRoomId()
+    const nextRoomId = fixedRoomId?.trim() || hostRoomId.trim() || generateRoomId()
     const restored = restoreFromCheckpoint ? loadCheckpoint(nextRoomId) : null
     const restoredState = restored && restored.role === 'host' ? restored.state : initialState
     const restoredVersion = restored && restored.role === 'host' ? restored.version : 0
@@ -161,7 +287,8 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     appendConnectionLog(`ホスト開始: room=${nextRoomId}`)
     setMode('p2p-host')
     setRoomId(nextRoomId)
-    setJoinRoomId(nextRoomId)
+    setHostRoomId(nextRoomId)
+    saveLastHostRoomId(nextRoomId)
     try {
       saveSessionMeta({ mode: 'p2p-host', roomId: nextRoomId, updatedAt: Date.now() })
     } catch {
@@ -176,6 +303,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
       if (status !== 'connected') {
         return
       }
+      markNetworkInbound()
       sendSnapshot(transport, nextRoomId)
     }))
     subscriptions.push(transport.onError((message) => {
@@ -185,6 +313,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
       if ('roomId' in message && message.roomId !== nextRoomId) {
         return
       }
+      markNetworkInbound()
 
       if (message.type === 'hello') {
         sendSnapshot(transport, nextRoomId)
@@ -193,6 +322,9 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
 
       if (message.type === 'ping') {
         transport.send({ type: 'pong', t: message.t })
+        return
+      }
+      if (message.type === 'pong') {
         return
       }
 
@@ -204,16 +336,18 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
         if (recentActionIdsRef.current.length > MAX_RECENT_ACTION_IDS) {
           recentActionIdsRef.current.shift()
         }
+        appendConnectionLog(`受信: ${message.command.type}`)
         if (message.from === 'player1') {
           return
         }
         versionRef.current += 1
         if (message.command.type === 'restartGame') {
-          applyRestartGame(message.command.maxRounds)
+          applyRestartGame(message.command.maxRounds, message.command.seed)
           sendSnapshot(transport, nextRoomId)
           return
         }
         onRemoteCommandRef.current?.(message.command)
+        transport.send(message)
         return
       }
     }))
@@ -222,7 +356,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
       transport,
       subscriptions,
     }
-  }, [appendConnectionLog, applyRestartGame, sendSnapshot, setGame, shutdownNetwork])
+  }, [appendConnectionLog, applyRestartGame, hostRoomId, markNetworkInbound, sendSnapshot, setGame, shutdownNetwork])
 
   const joinAsGuest = useCallback((initialState: KoiKoiGameState) => {
     const targetRoomId = (joinRoomId.trim() || roomIdRef.current).trim()
@@ -247,6 +381,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     setMode('p2p-guest')
     setRoomId(targetRoomId)
     setJoinRoomId(targetRoomId)
+    saveLastGuestRoomId(targetRoomId)
     try {
       saveSessionMeta({ mode: 'p2p-guest', roomId: targetRoomId, updatedAt: Date.now() })
     } catch {
@@ -261,6 +396,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
       if (status !== 'connected') {
         return
       }
+      markNetworkInbound()
       transport.send({
         type: 'hello',
         roomId: targetRoomId,
@@ -275,16 +411,21 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
       if ('roomId' in message && message.roomId !== targetRoomId) {
         return
       }
+      markNetworkInbound()
 
       if (message.type === 'state') {
         versionRef.current = message.version
-        gameRef.current = message.state
-        setGame(message.state)
+        const hydrated = hydrateStateSnapshot(message.state)
+        gameRef.current = hydrated
+        setGame(hydrated)
         return
       }
 
       if (message.type === 'ping') {
         transport.send({ type: 'pong', t: message.t })
+        return
+      }
+      if (message.type === 'pong') {
         return
       }
 
@@ -296,12 +437,10 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
         if (recentActionIdsRef.current.length > MAX_RECENT_ACTION_IDS) {
           recentActionIdsRef.current.shift()
         }
-        if (message.from === 'player2') {
-          return
-        }
+        appendConnectionLog(`受信: ${message.command.type}`)
         versionRef.current += 1
         if (message.command.type === 'restartGame') {
-          applyRestartGame(message.command.maxRounds)
+          applyRestartGame(message.command.maxRounds, message.command.seed)
           return
         }
         onRemoteCommandRef.current?.(message.command)
@@ -313,7 +452,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
       subscriptions,
     }
     return true
-  }, [appendConnectionLog, applyRestartGame, joinRoomId, setGame, shutdownNetwork])
+  }, [appendConnectionLog, applyRestartGame, joinRoomId, markNetworkInbound, setGame, shutdownNetwork])
 
   const sendTurnCommand = useCallback((command: TurnCommand): boolean => {
     if (modeRef.current === 'cpu') {
@@ -340,7 +479,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     }
     const currentState = gameRef.current
     const currentPlayerId = currentState.players[currentState.currentPlayerIndex].id
-    if (command.type !== 'restartGame' && currentPlayerId !== localPlayerId) {
+    if (!isOutOfTurnAllowedCommand(command) && currentPlayerId !== localPlayerId) {
       appendConnectionLog(`送信拒否: 手番外 (${command.type})`)
       return false
     }
@@ -354,7 +493,9 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     }
     const sent = network.transport.send(action)
     if (sent) {
-      versionRef.current += 1
+      if (modeRef.current === 'p2p-host') {
+        versionRef.current += 1
+      }
       appendConnectionLog(`送信: ${command.type}`)
     } else {
       appendConnectionLog(`送信失敗: transport未接続 (${command.type})`)
@@ -385,6 +526,52 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     teardownToCpu()
   }, [teardownToCpu])
 
+  useEffect(() => {
+    clearHostRecoveryTimer()
+    if (mode !== 'p2p-host') {
+      return
+    }
+    if (connectionStatus !== 'disconnected' && connectionStatus !== 'error') {
+      return
+    }
+
+    const activeRoomId = roomIdRef.current.trim()
+    if (activeRoomId.length === 0) {
+      return
+    }
+
+    appendConnectionLog(`ホスト待機を復旧します: room=${activeRoomId}`)
+    hostRecoveryTimerRef.current = setTimeout(() => {
+      hostRecoveryTimerRef.current = null
+      startHost(gameRef.current, activeRoomId, false)
+    }, HOST_AUTO_RECOVERY_DELAY_MS)
+
+    return clearHostRecoveryTimer
+  }, [appendConnectionLog, clearHostRecoveryTimer, connectionStatus, mode, startHost])
+
+  useEffect(() => {
+    clearGuestRecoveryTimer()
+    if (mode !== 'p2p-guest') {
+      return
+    }
+    if (connectionStatus !== 'disconnected' && connectionStatus !== 'error') {
+      return
+    }
+
+    const activeRoomId = roomIdRef.current.trim()
+    if (activeRoomId.length === 0) {
+      return
+    }
+
+    appendConnectionLog(`ゲスト再接続を試行します: room=${activeRoomId}`)
+    guestRecoveryTimerRef.current = setTimeout(() => {
+      guestRecoveryTimerRef.current = null
+      joinAsGuest(gameRef.current)
+    }, GUEST_AUTO_RECOVERY_DELAY_MS)
+
+    return clearGuestRecoveryTimer
+  }, [appendConnectionLog, clearGuestRecoveryTimer, connectionStatus, joinAsGuest, mode])
+
   const localPlayerIndex: 0 | 1 = mode === 'p2p-guest' ? 1 : 0
   const canAutoAdvance = mode === 'cpu' || mode === 'p2p-host'
   const isMultiplayer = mode !== 'cpu'
@@ -394,6 +581,8 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     connectionStatus,
     connectionLogs,
     roomId,
+    hostRoomId,
+    setHostRoomId,
     joinRoomId,
     setJoinRoomId,
     startHost,

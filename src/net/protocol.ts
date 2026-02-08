@@ -5,6 +5,7 @@ export const playerIdSchema = z.enum(['player1', 'player2'])
 export type PlayerId = z.infer<typeof playerIdSchema>
 
 export const koiKoiDecisionSchema = z.enum(['koikoi', 'stop'])
+const commandSeedSchema = z.number().int().nonnegative().max(0xffff_ffff)
 
 export const turnCommandSchema = z.discriminatedUnion('type', [
   z.object({
@@ -38,10 +39,16 @@ export const turnCommandSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal('startNextRound'),
+    seed: commandSeedSchema.optional(),
+  }),
+  z.object({
+    type: z.literal('readyNextRound'),
+    playerId: playerIdSchema,
   }),
   z.object({
     type: z.literal('restartGame'),
     maxRounds: z.union([z.literal(3), z.literal(6), z.literal(12)]),
+    seed: commandSeedSchema.optional(),
   }),
 ])
 export type TurnCommand = z.infer<typeof turnCommandSchema>

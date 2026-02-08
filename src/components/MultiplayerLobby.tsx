@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import type { MultiplayerMode } from '../hooks/useMultiplayerGame'
 
+type RoundCountOption = 3 | 6 | 12
+
 interface MultiplayerLobbyProps {
   readonly mode: MultiplayerMode
   readonly connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error'
   readonly connectionLogs?: readonly string[]
   readonly roomId: string
+  readonly hostRoomId: string
+  readonly onHostRoomIdChange: (value: string) => void
   readonly joinRoomId: string
   readonly onJoinRoomIdChange: (value: string) => void
   readonly onSwitchToCpu: () => void
@@ -13,6 +17,10 @@ interface MultiplayerLobbyProps {
   readonly onJoinGuest: () => void
   readonly onReconnect: () => void
   readonly onLeave: () => void
+  readonly roundCountOptions: readonly RoundCountOption[]
+  readonly selectedRoundCount: RoundCountOption | null
+  readonly canSelectRoundCount: boolean
+  readonly onSelectRoundCount: (value: RoundCountOption) => void
   readonly showCopyButton?: boolean
 }
 
@@ -66,6 +74,8 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
     connectionStatus,
     connectionLogs = [],
     roomId,
+    hostRoomId,
+    onHostRoomIdChange,
     joinRoomId,
     onJoinRoomIdChange,
     onSwitchToCpu,
@@ -73,14 +83,20 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
     onJoinGuest,
     onReconnect,
     onLeave,
+    roundCountOptions,
+    selectedRoundCount,
+    canSelectRoundCount,
+    onSelectRoundCount,
     showCopyButton = true,
   } = props
 
   const isMultiplayer = mode !== 'cpu'
+  const isCpuMode = mode === 'cpu'
   const isHostMode = mode === 'p2p-host'
   const isConnectedSession = isMultiplayer && connectionStatus === 'connected'
   const isHostWaitingForGuest = isHostMode && connectionStatus !== 'connected'
-  const disableSetupButtons = isMultiplayer
+  const showRoundSelectionWarning = mode === 'cpu' && selectedRoundCount === null
+  const disableSetupButtons = isMultiplayer || selectedRoundCount === null
   const disableJoinControls = isMultiplayer || isHostMode
   const canCopyRoomId = isHostWaitingForGuest && roomId.length > 0
   const [copiedRoomId, setCopiedRoomId] = useState<string | null>(null)
@@ -124,39 +140,85 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
         >
           CPU対戦
         </button>
-        <button
-          type="button"
-          className={mode === 'p2p-host' ? 'primary' : ''}
-          onClick={onStartHost}
-          disabled={disableSetupButtons}
-        >
-          部屋を作る
-        </button>
       </div>
+
+      <div className={`lobby-round-selector ${showRoundSelectionWarning ? 'required' : ''}`}>
+        <div className="lobby-round-selector-head">
+          <span>月数</span>
+          <span className={`lobby-round-selector-state ${selectedRoundCount === null ? 'unselected' : ''}`}>
+            {selectedRoundCount === null ? '未選択' : `${selectedRoundCount}月`}
+          </span>
+        </div>
+        <div className="round-count-selector" aria-label="月数選択" aria-invalid={showRoundSelectionWarning}>
+          {roundCountOptions.map((roundCount) => (
+            <button
+              key={roundCount}
+              type="button"
+              className={`round-count-button ${selectedRoundCount === roundCount ? 'active' : ''}`}
+              onClick={() => onSelectRoundCount(roundCount)}
+              disabled={!canSelectRoundCount}
+            >
+              {roundCount}月
+            </button>
+          ))}
+        </div>
+        <p className={`lobby-round-selector-note ${showRoundSelectionWarning ? 'warning' : ''}`}>
+          {showRoundSelectionWarning ? '月数を選ぶまで対戦を開始できません。' : '対戦前に月数を選択してください。'}
+        </p>
+      </div>
+
+      {isCpuMode ? (
+        <div className="lobby-section">
+          <p className="lobby-section-title">部屋を作成</p>
+          <div className="lobby-row">
+            <input
+              className="lobby-input"
+              value={hostRoomId}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => onHostRoomIdChange(event.target.value)}
+              placeholder="作成する部屋ID（空欄で自動生成）"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={disableSetupButtons}
+            />
+            <button
+              type="button"
+              className={mode === 'p2p-host' ? 'primary' : ''}
+              onClick={onStartHost}
+              disabled={disableSetupButtons}
+            >
+              部屋を作る
+            </button>
+          </div>
+          <p className="lobby-section-note">IDを空欄のまま作成すると自動で割り当てます。</p>
+        </div>
+      ) : null}
 
       {isConnectedSession ? null : isHostMode ? (
         <div className="lobby-row">
           <p className="lobby-waiting">参加待ち: 相手の接続を待っています</p>
         </div>
       ) : (
-        <div className="lobby-row">
-          <input
-            className="lobby-input"
-            value={joinRoomId}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => onJoinRoomIdChange(event.target.value)}
-            placeholder="部屋IDを入力"
-            autoComplete="off"
-            spellCheck={false}
-            disabled={disableJoinControls}
-          />
-          <button
-            type="button"
-            className={mode === 'p2p-guest' ? 'primary' : ''}
-            onClick={onJoinGuest}
-            disabled={disableJoinControls}
-          >
-            参加する
-          </button>
+        <div className="lobby-section">
+          <p className="lobby-section-title">部屋に参加</p>
+          <div className="lobby-row">
+            <input
+              className="lobby-input"
+              value={joinRoomId}
+              onChange={(event: ChangeEvent<HTMLInputElement>) => onJoinRoomIdChange(event.target.value)}
+              placeholder="参加する部屋ID"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={disableJoinControls}
+            />
+            <button
+              type="button"
+              className={mode === 'p2p-guest' ? 'primary' : ''}
+              onClick={onJoinGuest}
+              disabled={disableJoinControls}
+            >
+              参加する
+            </button>
+          </div>
         </div>
       )}
 
