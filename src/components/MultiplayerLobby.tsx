@@ -182,7 +182,7 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
             />
             <button
               type="button"
-              className={mode === 'p2p-host' ? 'primary' : ''}
+              className=""
               onClick={onStartHost}
               disabled={disableSetupButtons}
             >
