@@ -5,7 +5,63 @@ export const playerIdSchema = z.enum(['player1', 'player2'])
 export type PlayerId = z.infer<typeof playerIdSchema>
 
 export const koiKoiDecisionSchema = z.enum(['koikoi', 'stop'])
+const koiKoiBonusModeSchema = z.enum(['none', 'multiplicative', 'additive'])
+const noYakuPolicySchema = z.enum(['both-zero', 'seat-points'])
+const dealerRotationModeSchema = z.enum(['winner', 'loser', 'alternate'])
+const drawOvertimeModeSchema = z.enum(['fixed', 'until-decision'])
 const commandSeedSchema = z.number().int().nonnegative().max(0xffff_ffff)
+const yakuPointValueSchema = z.number().int().min(0).max(99)
+const yakuPointsSchema = z.object({
+  goko: yakuPointValueSchema,
+  shiko: yakuPointValueSchema,
+  'ame-shiko': yakuPointValueSchema,
+  sanko: yakuPointValueSchema,
+  shiten: yakuPointValueSchema,
+  inoshikacho: yakuPointValueSchema,
+  'hanami-zake': yakuPointValueSchema,
+  'tsukimi-zake': yakuPointValueSchema,
+  akatan: yakuPointValueSchema,
+  aotan: yakuPointValueSchema,
+  tane: yakuPointValueSchema,
+  tanzaku: yakuPointValueSchema,
+  kasu: yakuPointValueSchema,
+})
+const yakuEnabledSchema = z.object({
+  goko: z.boolean(),
+  shiko: z.boolean(),
+  'ame-shiko': z.boolean(),
+  sanko: z.boolean(),
+  shiten: z.boolean(),
+  inoshikacho: z.boolean(),
+  'hanami-zake': z.boolean(),
+  'tsukimi-zake': z.boolean(),
+  akatan: z.boolean(),
+  aotan: z.boolean(),
+  tane: z.boolean(),
+  tanzaku: z.boolean(),
+  kasu: z.boolean(),
+})
+const localRuleSettingsInputSchema = z.object({
+  yakuPoints: yakuPointsSchema.partial().optional(),
+  yakuEnabled: yakuEnabledSchema.partial().optional(),
+  koiKoiBonusMode: koiKoiBonusModeSchema.optional(),
+  enableKoiKoiShowdown: z.boolean().optional(),
+  selfKoiBonusFactor: z.number().int().min(1).max(5).optional(),
+  opponentKoiBonusFactor: z.number().int().min(1).max(5).optional(),
+  enableHanamiZake: z.boolean().optional(),
+  enableTsukimiZake: z.boolean().optional(),
+  noYakuPolicy: noYakuPolicySchema.optional(),
+  noYakuParentPoints: yakuPointValueSchema.optional(),
+  noYakuChildPoints: yakuPointValueSchema.optional(),
+  enableFourCardsYaku: z.boolean().optional(),
+  enableAmeNagare: z.boolean().optional(),
+  enableKiriNagare: z.boolean().optional(),
+  koikoiLimit: z.number().int().min(0).max(12).optional(),
+  dealerRotationMode: dealerRotationModeSchema.optional(),
+  enableDrawOvertime: z.boolean().optional(),
+  drawOvertimeMode: drawOvertimeModeSchema.optional(),
+  drawOvertimeRounds: z.number().int().min(0).max(12).optional(),
+})
 
 export const turnCommandSchema = z.discriminatedUnion('type', [
   z.object({
@@ -48,6 +104,7 @@ export const turnCommandSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('restartGame'),
     maxRounds: z.union([z.literal(3), z.literal(6), z.literal(12)]),
+    localRules: localRuleSettingsInputSchema.optional(),
     seed: commandSeedSchema.optional(),
   }),
 ])

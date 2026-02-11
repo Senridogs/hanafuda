@@ -72,6 +72,9 @@ export function getCardImageUrl(card: HanafudaCard): string {
   return `${WIKIMEDIA_SPECIAL_FILEPATH}${encodeURIComponent(fileName)}`
 }
 
-export const CARD_ART_CREDIT_TEXT =
-  '札画像: Wikimedia Commons (Louie Mantia / すけじょ), CC BY-SA 4.0'
+export const CARD_ART_CREDIT_TEXT = '札画像: Wikimedia Commons (Louie Mantia / すけじょ)'
+export const CARD_ART_SOURCE_URL =
+  'https://commons.wikimedia.org/wiki/Category:SVG_Hanafuda_with_traditional_colors_(black_border)'
+export const CARD_ART_LICENSE_TEXT = 'CC BY-SA 4.0'
 export const CARD_ART_LICENSE_URL = 'https://creativecommons.org/licenses/by-sa/4.0/'
+export const CARD_ART_MODIFICATION_TEXT = '改変: なし'

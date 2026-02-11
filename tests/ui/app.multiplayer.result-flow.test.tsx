@@ -19,7 +19,8 @@ class MockDataConnection {
     this.handlers[event].push(handler)
   }
 
-  send(_payload: unknown): void {
+  send(payload: unknown): void {
+    void payload
     // no-op in tests
   }
 

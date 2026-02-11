@@ -1,0 +1,365 @@
+<mxfile host="app.diagrams.net" modified="2026-02-11T00:00:00.000Z" agent="Codex" version="24.7.17">
+  <diagram id="local-rule-branch" name="ローカルルール分岐フロー">
+    <mxGraphModel dx="2000" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="4200" pageHeight="2400" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="h1" value="A. ターン進行分岐（役判定～こいこい判定）" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1f2937;strokeColor=#111827;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="20" width="1160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="h2" value="B. こいこい選択分岐" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1f2937;strokeColor=#111827;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="490" width="1160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="h3" value="C. 得点計算分岐" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1f2937;strokeColor=#111827;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="20" width="1940" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="h4" value="D. 終局判定分岐" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1f2937;strokeColor=#111827;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="900" width="3160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="h5" value="E. 親回し分岐" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1f2937;strokeColor=#111827;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="20" y="1240" width="1320" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="h6" value="F. 設定UI分岐" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1f2937;strokeColor=#111827;fontColor=#ffffff;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1360" y="1240" width="1820" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="a1" value="ターン終了判定開始（checkTurn）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="150" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="a2" value="新しい役が成立した？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="320" y="145" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a3" value="山札が尽きた？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="560" y="320" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a4" value="流れ（山札切れ）で終了&#xa;0点/roundReason=exhausted" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="800" y="310" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="a5" value="手番交代して続行&#xa;phase=selectHandCard" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="800" y="410" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="a6" value="山札切れ または&#xa;（こいこい発生済み かつ 合戦OFF）？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="560" y="70" width="220" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="a7" value="停止点を計算&#xa;（こいこい発生時:getStopRoundPoints）&#xa;finishRound(..., stopPoints, stop)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="840" y="70" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="a8" value="こいこい宣言できる？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="560" y="200" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a9" value="停止点を計算（getStopRoundPoints）&#xa;finishRound(..., stopPoints, stop)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="840" y="190" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="a10" value="こいこい選択へ&#xa;phase=koikoiDecision" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="840" y="290" width="260" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="b1" value="こいこい選択処理（resolveKoiKoi）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="590" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="b2" value="選択が「上がる（stop）」？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="320" y="580" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="b3" value="停止点を計算（getStopRoundPoints）&#xa;finishRound(..., stopPoints, stop)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="560" y="540" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="b4" value="こいこい宣言できる？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="560" y="650" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="b5" value="上限到達で強制終了&#xa;finishRound(..., stop)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="840" y="640" width="260" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="b6" value="こいこい回数+1&#xa;newYakuをクリア&#xa;手番交代（advanceTurn）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="840" y="750" width="260" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c1" value="停止時得点計算（getStopRoundPoints）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="130" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" value="基本点を取得（getBaseRoundPoints）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1540" y="130" width="250" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" value="基本点<=0 または&#xa;こいこい倍率方式が「なし」？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="1820" y="115" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="c4" value="基本点をそのまま返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2080" y="70" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c5" value="7点以上・自分こいこい・相手こいこい&#xa;ボーナスが全部なし？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="2080" y="180" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="c6" value="基本点をそのまま返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2330" y="190" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c7" value="倍率方式が加算式？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="2330" y="300" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="c8" value="加算式で返す&#xa;基本点 * (1 + 高得点補正 + 自分こいこい補正 + 相手こいこい補正)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2580" y="275" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="c9" value="乗算式で返す&#xa;基本点 * ((高得点なら2倍) * 自分倍率^回数 * 相手倍率^回数)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2580" y="375" width="330" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="c10" value="ラウンド基本点計算（getBaseRoundPoints）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="520" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c11" value="役点合計が0より大きい？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="1540" y="510" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="c12" value="役点合計を返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1820" y="460" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c13" value="役なし時の点数計算（resolveNoYakuPoints）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1820" y="560" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c14" value="役なし方式が「双方0点」？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="2060" y="545" width="230" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="c15" value="0点を返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2340" y="500" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c16" value="役なし方式が「親子点数」？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="2340" y="610" width="230" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="c17" value="このプレイヤーは親？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="2600" y="620" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="c18" value="親点を返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2830" y="560" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="c19" value="子点を返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2830" y="650" width="240" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d1" value="ラウンド終了処理（finishRound）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="990" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d2" value="勝者がいれば&#xa;勝者スコアに加点" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="300" y="990" width="220" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="d3" value="最終ラウンド到達？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="560" y="985" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="d4" value="対局終了へ&#xa;phase=gameOver/winner確定" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="820" y="940" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="d5" value="ラウンド終了へ&#xa;phase=roundEnd" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="820" y="1040" width="280" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="d6" value="最終ラウンド判定（hasReachedFinalRound）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="970" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d7" value="現在ラウンド < 規定ラウンド？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="1540" y="960" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="d8" value="falseを返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1800" y="900" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d9" value="同点か判定（isTie）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1800" y="1000" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d10" value="引き分け延長が有効？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="2050" y="990" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="d11" value="trueを返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2310" y="900" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d12" value="延長方式が「決着まで」？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="2310" y="1000" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="d13" value="同点でなければtrueを返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2570" y="940" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d14" value="最終有効ラウンド =&#xa;規定ラウンド + 延長回数" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="2570" y="1040" width="250" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="d15" value="最終有効ラウンド前 かつ 同点？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="2860" y="1040" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="d16" value="falseを返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="3120" y="990" width="160" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d17" value="trueを返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="3120" y="1120" width="160" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" value="次の親決定（resolveNextStarterIndex）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1320" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="親の回し方が「交代」？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="320" y="1310" width="230" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="開始親を交代して返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="590" y="1260" width="260" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="ラウンド勝者がいる？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="590" y="1380" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="終了理由が流れ（exhausted）？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="850" y="1360" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="開始親を維持して返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="1320" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="開始親を交代して返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="1410" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" value="親の回し方が「敗者親」？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="850" y="1510" width="230" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" value="勝者の反対側を返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="1490" width="230" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" value="勝者を返す" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="1580" width="220" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="n1" value="注: canDeclareKoiKoi は&#xa;「こいこい合戦ON かつ 倍率方式あり かつ 上限>0」の時だけ上限判定" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1240" y="740" width="500" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="n2" value="注: 花見・月見は「有効 かつ 点数>0」が前提。&#xa;雨流れ・霧流れで個別に成立不可になる。" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1760" y="740" width="450" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f1" value="役ON/OFF変更（handleChangeYakuEnabled）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="1320" width="320" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="f2" value="OFFにした？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="1760" y="1310" width="200" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f3" value="対象が花見で一杯？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="2000" y="1270" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f4" value="雨流れをOFFにして保存" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2260" y="1230" width="320" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="f5" value="対象が月見で一杯？" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="2260" y="1320" width="220" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="f6" value="霧流れをOFFにして保存" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2520" y="1320" width="320" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="f7" value="通常保存（applyLocalRuleChange）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="2260" y="1410" width="320" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f8" value="雨流れ・霧流れトグルのガード" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="1470" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="f9" value="雨流れトグル:&#xa;花見が無効なら即終了" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1640" y="1460" width="300" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="f10" value="霧流れトグル:&#xa;月見が無効なら即終了" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1960" y="1460" width="310" height="70" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f11" value="ステッパー有効条件" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1400" y="1560" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="f12" value="自分/相手倍率:&#xa;倍率方式が「なし」以外で有効" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1640" y="1550" width="280" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="f13" value="こいこい上限:&#xa;合戦ON かつ 倍率方式ありで有効" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="1940" y="1550" width="320" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="f14" value="親点/子点: 役なし方式が親子点数で有効&#xa;延長回数: 延長ON かつ 決着まで以外で有効" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="1">
+          <mxGeometry x="2280" y="1550" width="450" height="80" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ea1" edge="1" parent="1" source="a1" target="a2" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ea2" value="いいえ" edge="1" parent="1" source="a2" target="a3" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ea3" value="はい" edge="1" parent="1" source="a2" target="a6" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ea4" value="はい" edge="1" parent="1" source="a3" target="a4" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ea5" value="いいえ" edge="1" parent="1" source="a3" target="a5" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ea6" value="はい" edge="1" parent="1" source="a6" target="a7" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ea7" value="いいえ" edge="1" parent="1" source="a6" target="a8" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ea8" value="いいえ" edge="1" parent="1" source="a8" target="a9" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ea9" value="はい" edge="1" parent="1" source="a8" target="a10" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+
+        <mxCell id="eb1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;" edge="1" parent="1" source="a10" target="b1" />
+        <mxCell id="eb2" edge="1" parent="1" source="b1" target="b2" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="eb3" value="はい" edge="1" parent="1" source="b2" target="b3" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="eb4" value="いいえ" edge="1" parent="1" source="b2" target="b4" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="eb5" value="いいえ" edge="1" parent="1" source="b4" target="b5" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="eb6" value="はい" edge="1" parent="1" source="b4" target="b6" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+
+        <mxCell id="ec1" edge="1" parent="1" source="c1" target="c2" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec2" edge="1" parent="1" source="c2" target="c3" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec3" value="はい" edge="1" parent="1" source="c3" target="c4" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec4" value="いいえ" edge="1" parent="1" source="c3" target="c5" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec5" value="はい" edge="1" parent="1" source="c5" target="c6" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec6" value="いいえ" edge="1" parent="1" source="c5" target="c7" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec7" value="はい" edge="1" parent="1" source="c7" target="c8" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec8" value="いいえ" edge="1" parent="1" source="c7" target="c9" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec9" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;" edge="1" parent="1" source="c2" target="c10" />
+        <mxCell id="ec10" edge="1" parent="1" source="c10" target="c11" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec11" value="はい" edge="1" parent="1" source="c11" target="c12" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec12" value="いいえ" edge="1" parent="1" source="c11" target="c13" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec13" edge="1" parent="1" source="c13" target="c14" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec14" value="はい" edge="1" parent="1" source="c14" target="c15" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec15" value="いいえ" edge="1" parent="1" source="c14" target="c16" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec16" value="はい" edge="1" parent="1" source="c16" target="c17" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec17" value="はい" edge="1" parent="1" source="c17" target="c18" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ec18" value="いいえ" edge="1" parent="1" source="c17" target="c19" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+
+        <mxCell id="ed1" edge="1" parent="1" source="d1" target="d2" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed2" edge="1" parent="1" source="d2" target="d3" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed3" value="はい" edge="1" parent="1" source="d3" target="d4" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed4" value="いいえ" edge="1" parent="1" source="d3" target="d5" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed5" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;" edge="1" parent="1" source="d3" target="d6" />
+        <mxCell id="ed6" edge="1" parent="1" source="d6" target="d7" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed7" value="はい" edge="1" parent="1" source="d7" target="d8" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed8" value="いいえ" edge="1" parent="1" source="d7" target="d9" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed9" edge="1" parent="1" source="d9" target="d10" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed10" value="いいえ" edge="1" parent="1" source="d10" target="d11" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed11" value="はい" edge="1" parent="1" source="d10" target="d12" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed12" value="はい" edge="1" parent="1" source="d12" target="d13" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed13" value="いいえ" edge="1" parent="1" source="d12" target="d14" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed14" edge="1" parent="1" source="d14" target="d15" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed15" value="はい" edge="1" parent="1" source="d15" target="d16" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ed16" value="いいえ" edge="1" parent="1" source="d15" target="d17" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+
+        <mxCell id="ee1" edge="1" parent="1" source="e1" target="e2" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ee2" value="はい" edge="1" parent="1" source="e2" target="e3" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ee3" value="いいえ" edge="1" parent="1" source="e2" target="e4" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ee4" value="いいえ" edge="1" parent="1" source="e4" target="e5" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ee5" value="はい" edge="1" parent="1" source="e5" target="e6" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ee6" value="いいえ" edge="1" parent="1" source="e5" target="e7" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ee7" value="はい" edge="1" parent="1" source="e4" target="e8" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ee8" value="はい" edge="1" parent="1" source="e8" target="e9" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ee9" value="いいえ" edge="1" parent="1" source="e8" target="e10" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+
+        <mxCell id="ef1" edge="1" parent="1" source="f1" target="f2" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ef2" value="いいえ" edge="1" parent="1" source="f2" target="f7" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ef3" value="はい" edge="1" parent="1" source="f2" target="f3" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ef4" value="はい" edge="1" parent="1" source="f3" target="f4" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ef5" value="いいえ" edge="1" parent="1" source="f3" target="f5" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ef6" value="はい" edge="1" parent="1" source="f5" target="f6" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+        <mxCell id="ef7" value="いいえ" edge="1" parent="1" source="f5" target="f7" style="endArrow=block;endFill=1;html=1;orthogonal=1;rounded=0;" />
+
+        <mxCell id="x1" value="得点計算へ" edge="1" parent="1" source="a7" target="c1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#6c8ebf;" />
+        <mxCell id="x2" value="得点計算へ" edge="1" parent="1" source="a9" target="c1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#6c8ebf;" />
+        <mxCell id="x3" value="得点計算へ" edge="1" parent="1" source="b3" target="c1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#6c8ebf;" />
+        <mxCell id="x4" value="得点計算へ" edge="1" parent="1" source="b5" target="c1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#6c8ebf;" />
+
+        <mxCell id="x5" value="点数を返す" edge="1" parent="1" source="c4" target="d1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#82b366;" />
+        <mxCell id="x6" value="点数を返す" edge="1" parent="1" source="c6" target="d1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#82b366;" />
+        <mxCell id="x7" value="点数を返す" edge="1" parent="1" source="c8" target="d1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#82b366;" />
+        <mxCell id="x8" value="点数を返す" edge="1" parent="1" source="c9" target="d1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#82b366;" />
+
+        <mxCell id="x9" value="次ラウンド開始前" edge="1" parent="1" source="d5" target="e1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#d79b00;" />
+        <mxCell id="x10" value="次ラウンドへ" edge="1" parent="1" source="e3" target="a1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#d79b00;" />
+        <mxCell id="x11" value="次ラウンドへ" edge="1" parent="1" source="e6" target="a1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#d79b00;" />
+        <mxCell id="x12" value="次ラウンドへ" edge="1" parent="1" source="e7" target="a1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#d79b00;" />
+        <mxCell id="x13" value="次ラウンドへ" edge="1" parent="1" source="e9" target="a1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#d79b00;" />
+        <mxCell id="x14" value="次ラウンドへ" edge="1" parent="1" source="e10" target="a1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#d79b00;" />
+
+        <mxCell id="x15" value="設定反映" edge="1" parent="1" source="f7" target="c1" style="endArrow=block;endFill=1;html=1;dashed=1;orthogonal=1;rounded=0;strokeColor=#6c8ebf;" />
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

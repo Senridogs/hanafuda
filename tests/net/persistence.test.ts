@@ -3,16 +3,19 @@ import { createNewGame } from '../../src/engine/game'
 import {
   CHECKPOINT_TTL_MS,
   CPU_CHECKPOINT_TTL_MS,
+  PREFERRED_ROUND_COUNT_KEY,
   clearCpuCheckpoint,
   clearCheckpoint,
   loadCpuCheckpoint,
   loadLastGuestRoomId,
   loadLastHostRoomId,
   loadCheckpoint,
+  loadPreferredRoundCount,
   saveCpuCheckpoint,
   saveCheckpoint,
   saveLastGuestRoomId,
   saveLastHostRoomId,
+  savePreferredRoundCount,
   type CpuCheckpointPayload,
   type CheckpointPayload,
 } from '../../src/net/persistence'
@@ -167,5 +170,23 @@ describe('cpu checkpoint persistence', () => {
     }))
 
     expect(loadCpuCheckpoint()).toBeNull()
+  })
+})
+
+describe('preferred round count persistence', () => {
+  it('supports save/load roundtrip', () => {
+    savePreferredRoundCount(6)
+    expect(loadPreferredRoundCount()).toBe(6)
+  })
+
+  it('supports plain legacy numeric payload', () => {
+    localStorage.setItem('hanafuda:max-rounds', '12')
+    expect(loadPreferredRoundCount()).toBe(12)
+    expect(loadPreferredRoundCount()).toBe(12)
+  })
+
+  it('rejects invalid values safely', () => {
+    localStorage.setItem(PREFERRED_ROUND_COUNT_KEY, JSON.stringify({ roundCount: 5 }))
+    expect(loadPreferredRoundCount()).toBeNull()
   })
 })

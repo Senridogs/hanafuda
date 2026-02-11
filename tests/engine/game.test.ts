@@ -12,7 +12,7 @@ import {
   startNextRound,
   type KoiKoiGameState,
 } from '../../src/engine/game'
-import { DEFAULT_CONFIG, type Player } from '../../src/engine/types'
+import { DEFAULT_CONFIG, DEFAULT_LOCAL_RULE_SETTINGS, type Player } from '../../src/engine/types'
 import { calculateYaku } from '../../src/engine/yaku'
 
 function card(id: string) {
@@ -324,6 +324,161 @@ describe('game flow', () => {
     expect(result.roundWinner).toBe('player1')
     expect(result.roundPoints).toBe(40)
     expect(result.players[0].score).toBe(40)
+  })
+
+  it('applies additive koi-koi bonus mode when both bonuses are active', () => {
+    const base = createTestState()
+    const captured = [card('jan-hikari'), card('mar-hikari'), card('aug-hikari'), card('nov-hikari'), card('dec-hikari')]
+    const yaku = calculateYaku(captured)
+
+    const koikoiState: KoiKoiGameState = {
+      ...base,
+      phase: 'koikoiDecision',
+      players: [
+        { ...base.players[0], captured, completedYaku: yaku, hand: [card('apr-kasu-1')] },
+        base.players[1],
+      ],
+      koikoiCounts: [0, 1],
+      config: {
+        ...base.config,
+        localRules: {
+          ...DEFAULT_LOCAL_RULE_SETTINGS,
+          koiKoiBonusMode: 'additive',
+        },
+      },
+    }
+    const result = resolveKoiKoi(koikoiState, 'stop')
+
+    expect(result.phase).toBe('roundEnd')
+    expect(result.roundWinner).toBe('player1')
+    expect(result.roundPoints).toBe(30)
+    expect(result.players[0].score).toBe(30)
+  })
+
+  it('applies no-yaku policy both-zero', () => {
+    const base = createTestState()
+    const koikoiState: KoiKoiGameState = {
+      ...base,
+      phase: 'koikoiDecision',
+      players: [
+        { ...base.players[0], captured: [], completedYaku: [], hand: [card('apr-kasu-1')] },
+        base.players[1],
+      ],
+      config: {
+        ...base.config,
+        localRules: {
+          ...DEFAULT_LOCAL_RULE_SETTINGS,
+          noYakuPolicy: 'both-zero',
+        },
+      },
+    }
+    const result = resolveKoiKoi(koikoiState, 'stop')
+
+    expect(result.phase).toBe('roundEnd')
+    expect(result.roundWinner).toBe('player1')
+    expect(result.roundPoints).toBe(0)
+    expect(result.players[0].score).toBe(0)
+  })
+
+  it('applies no-yaku policy seat-points by parent/child seat', () => {
+    const base = createTestState()
+    const parentState: KoiKoiGameState = {
+      ...base,
+      phase: 'koikoiDecision',
+      roundStarterIndex: 0,
+      currentPlayerIndex: 0,
+      players: [
+        { ...base.players[0], captured: [], completedYaku: [], hand: [card('apr-kasu-1')] },
+        base.players[1],
+      ],
+      config: {
+        ...base.config,
+        localRules: {
+          ...DEFAULT_LOCAL_RULE_SETTINGS,
+          noYakuPolicy: 'seat-points',
+          noYakuParentPoints: 3,
+          noYakuChildPoints: 1,
+        },
+      },
+    }
+    const childState: KoiKoiGameState = {
+      ...parentState,
+      currentPlayerIndex: 1,
+      players: [
+        parentState.players[0],
+        { ...base.players[1], captured: [], completedYaku: [], hand: [card('may-kasu-1')] },
+      ],
+    }
+
+    const parentResult = resolveKoiKoi(parentState, 'stop')
+    const childResult = resolveKoiKoi(childState, 'stop')
+
+    expect(parentResult.roundPoints).toBe(3)
+    expect(childResult.roundPoints).toBe(1)
+  })
+
+  it('treats koikoiLimit as declaration limit (not multiplier cap)', () => {
+    const base = createTestState()
+    const captured = [card('jan-hikari'), card('mar-hikari'), card('aug-hikari')]
+    const yaku = calculateYaku(captured)
+    const koikoiState: KoiKoiGameState = {
+      ...base,
+      phase: 'koikoiDecision',
+      players: [
+        { ...base.players[0], captured, completedYaku: yaku, hand: [card('apr-kasu-1')] },
+        base.players[1],
+      ],
+      koikoiCounts: [1, 0],
+      config: {
+        ...base.config,
+        localRules: {
+          ...DEFAULT_LOCAL_RULE_SETTINGS,
+          koiKoiBonusMode: 'multiplicative',
+          koikoiLimit: 1,
+        },
+      },
+    }
+
+    const result = resolveKoiKoi(koikoiState, 'koikoi')
+
+    expect(result.phase).toBe('roundEnd')
+    expect(result.roundWinner).toBe('player1')
+    expect(result.roundPoints).toBe(5)
+  })
+
+  it('extends game on final-round total tie when overtime is enabled', () => {
+    const base = createTestState()
+    const regulationTieState: KoiKoiGameState = {
+      ...base,
+      phase: 'koikoiDecision',
+      round: 3,
+      roundStarterIndex: 0,
+      players: [
+        { ...base.players[0], score: 10, captured: [], completedYaku: [], hand: [card('apr-kasu-1')] },
+        { ...base.players[1], score: 10, captured: [], completedYaku: [], hand: [card('may-kasu-1')] },
+      ],
+      config: {
+        ...base.config,
+        maxRounds: 3,
+        localRules: {
+          ...DEFAULT_LOCAL_RULE_SETTINGS,
+          noYakuPolicy: 'both-zero',
+          enableDrawOvertime: true,
+          drawOvertimeRounds: 2,
+        },
+      },
+    }
+    const limitTieState: KoiKoiGameState = {
+      ...regulationTieState,
+      round: 5,
+    }
+
+    const regulationResult = resolveKoiKoi(regulationTieState, 'stop')
+    const limitResult = resolveKoiKoi(limitTieState, 'stop')
+
+    expect(regulationResult.phase).toBe('roundEnd')
+    expect(limitResult.phase).toBe('gameOver')
+    expect(limitResult.winner).toBeNull()
   })
 
   it('also doubles for player2 when player1 already called koi-koi', () => {

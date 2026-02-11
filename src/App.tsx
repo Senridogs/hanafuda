@@ -14,12 +14,24 @@ import {
 import {
   clearCpuCheckpoint,
   loadCpuCheckpoint,
+  loadLocalRuleSettings,
+  loadPreferredRoundCount,
   loadSessionMeta,
+  resetLocalRuleSettings,
+  saveLocalRuleSettings,
+  savePreferredRoundCount,
   saveCpuCheckpoint,
 } from './net/persistence'
 import './App.css'
 import { chooseAiHandCard, chooseAiKoiKoi, chooseAiMatch } from './engine/ai'
-import { getCardImageUrl } from './engine/cardArt'
+import {
+  CARD_ART_CREDIT_TEXT,
+  CARD_ART_LICENSE_TEXT,
+  CARD_ART_LICENSE_URL,
+  CARD_ART_MODIFICATION_TEXT,
+  CARD_ART_SOURCE_URL,
+  getCardImageUrl,
+} from './engine/cardArt'
 import { HANAFUDA_CARDS } from './engine/cards'
 import {
   checkTurn,
@@ -36,9 +48,19 @@ import {
   type KoiKoiGameState,
   type RoundScoreEntry,
 } from './engine/game'
-import { DEFAULT_CONFIG, type HanafudaCard, type Yaku } from './engine/types'
-import { getYakuTotalPoints } from './engine/yaku'
+import {
+  DEFAULT_CONFIG,
+  DEFAULT_LOCAL_RULE_SETTINGS,
+  normalizeGameConfig,
+  normalizeLocalRuleSettings,
+  type HanafudaCard,
+  type LocalRuleSettings,
+  type Yaku,
+  type YakuType,
+} from './engine/types'
+import { calculateYaku, getYakuTotalPoints } from './engine/yaku'
 import { MultiplayerLobby } from './components/MultiplayerLobby'
+import { LocalRulePanel } from './components/LocalRulePanel'
 import {
   AI_THINK_DELAY_MS,
   SYSTEM_STEP_DELAY_MS,
@@ -133,6 +155,7 @@ const STAGED_CAPTURE_FLIP_END_TIME = 0.56
 const STAGED_CAPTURE_MERGE_TIME = 0.75
 const STAGED_ADD_TO_FIELD_DURATION = 2
 const ROUND_COUNT_OPTIONS = [3, 6, 12] as const
+const DEFAULT_ROUND_COUNT = 3 as const
 const MOBILE_BREAKPOINT_QUERY = '(max-width: 720px)'
 const FLICK_MIN_DISTANCE_PX = 38
 const FLICK_MIN_SPEED_PX_PER_MS = 0.28
@@ -142,6 +165,14 @@ const TAP_MAX_DURATION_MS = 300
 const FIELD_EMPTY_SLOT_TARGET_ID = '__field-empty-slot__'
 const EXPANDED_SELECTION_CANCEL_PULSE_MS = 120
 const AI_KOIKOI_DECISION_DELAY_MS = 0
+const AI_DIFFICULTY_LABELS: Record<string, string> = {
+  yowai: 'よわい',
+  futsuu: 'ふつう',
+  tsuyoi: 'つよい',
+  yabai: 'やばい',
+  oni: 'おに',
+  kami: 'かみ',
+}
 const YAKU_DROP_TIME_SCALE = 2
 const YAKU_DROP_CARD_STAGGER_SECONDS = 0.24 * YAKU_DROP_TIME_SCALE
 const YAKU_DROP_CARD_DURATION_SECONDS = 0.72 * YAKU_DROP_TIME_SCALE
@@ -271,12 +302,222 @@ const RULE_HELP_BASIC_YAKU_ENTRIES: readonly RuleHelpYakuEntry[] = [
   ...RULE_HELP_HIGH_YAKU_ENTRIES,
   ...RULE_HELP_COUNT_YAKU_ENTRIES,
 ]
-const RULE_HELP_SCORING_NOTES: readonly string[] = [
-  '役が1つもない場合は1点で上がりになります。',
-  '役合計が7点以上なら最終得点が2倍になります。',
-  '相手がこいこい中に上がると最終得点がさらに2倍になります。',
-] as const
 const RULE_HELP_CARD_ID_MAP = new Map(HANAFUDA_CARDS.map((card) => [card.id, card] as const))
+const LOCAL_RULE_YAKU_FIELDS: readonly {
+  key: YakuType
+  label: string
+  condition: string
+  exampleCardIds: readonly string[]
+}[] = [
+  {
+    key: 'goko',
+    label: '五光',
+    condition: '光札を5枚',
+    exampleCardIds: ['jan-hikari', 'mar-hikari', 'aug-hikari', 'nov-hikari', 'dec-hikari'],
+  },
+  {
+    key: 'shiko',
+    label: '四光',
+    condition: '光札を4枚（雨札なし）',
+    exampleCardIds: ['jan-hikari', 'mar-hikari', 'aug-hikari', 'dec-hikari'],
+  },
+  {
+    key: 'ame-shiko',
+    label: '雨四光',
+    condition: '光札を4枚（柳に小野道風を含む）',
+    exampleCardIds: ['jan-hikari', 'mar-hikari', 'aug-hikari', 'nov-hikari'],
+  },
+  {
+    key: 'sanko',
+    label: '三光',
+    condition: '光札を3枚（雨札なし）',
+    exampleCardIds: ['jan-hikari', 'mar-hikari', 'dec-hikari'],
+  },
+  {
+    key: 'shiten',
+    label: '四点役',
+    condition: '同じ月の札4枚',
+    exampleCardIds: ['jan-hikari', 'jan-tanzaku', 'jan-kasu-1', 'jan-kasu-2'],
+  },
+  {
+    key: 'inoshikacho',
+    label: '猪鹿蝶',
+    condition: '牡丹に蝶・萩に猪・紅葉に鹿',
+    exampleCardIds: ['jun-tane', 'jul-tane', 'oct-tane'],
+  },
+  {
+    key: 'hanami-zake',
+    label: '花見で一杯',
+    condition: '桜に幕 + 菊に盃',
+    exampleCardIds: ['mar-hikari', 'sep-tane'],
+  },
+  {
+    key: 'tsukimi-zake',
+    label: '月見で一杯',
+    condition: '芒に月 + 菊に盃',
+    exampleCardIds: ['aug-hikari', 'sep-tane'],
+  },
+  {
+    key: 'akatan',
+    label: '赤短',
+    condition: '1/2/3月の赤短を3枚',
+    exampleCardIds: ['jan-tanzaku', 'feb-tanzaku', 'mar-tanzaku'],
+  },
+  {
+    key: 'aotan',
+    label: '青短',
+    condition: '6/9/10月の青短を3枚',
+    exampleCardIds: ['jun-tanzaku', 'sep-tanzaku', 'oct-tanzaku'],
+  },
+  {
+    key: 'tane',
+    label: 'たね',
+    condition: '種札を5枚以上',
+    exampleCardIds: ['feb-tane', 'apr-tane', 'may-tane', 'jun-tane', 'jul-tane'],
+  },
+  {
+    key: 'tanzaku',
+    label: 'たんざく',
+    condition: '短冊札を5枚以上',
+    exampleCardIds: ['jan-tanzaku', 'feb-tanzaku', 'mar-tanzaku', 'jun-tanzaku', 'sep-tanzaku'],
+  },
+  {
+    key: 'kasu',
+    label: 'かす',
+    condition: 'カス札を10枚以上',
+    exampleCardIds: ['jan-kasu-1', 'jan-kasu-2', 'feb-kasu-1', 'feb-kasu-2', 'mar-kasu-1'],
+  },
+]
+
+function isRoundCountOption(value: number): value is (typeof ROUND_COUNT_OPTIONS)[number] {
+  return ROUND_COUNT_OPTIONS.includes(value as (typeof ROUND_COUNT_OPTIONS)[number])
+}
+
+function getInitialRoundCount(): (typeof ROUND_COUNT_OPTIONS)[number] {
+  const saved = loadPreferredRoundCount()
+  return saved && isRoundCountOption(saved) ? saved : DEFAULT_ROUND_COUNT
+}
+
+function getInitialLocalRules(): LocalRuleSettings {
+  return normalizeLocalRuleSettings(loadLocalRuleSettings() ?? DEFAULT_LOCAL_RULE_SETTINGS)
+}
+
+function areLocalRulesEqual(a: LocalRuleSettings, b: LocalRuleSettings): boolean {
+  if (
+    a.koiKoiBonusMode !== b.koiKoiBonusMode ||
+    a.enableKoiKoiShowdown !== b.enableKoiKoiShowdown ||
+    a.selfKoiBonusFactor !== b.selfKoiBonusFactor ||
+    a.opponentKoiBonusFactor !== b.opponentKoiBonusFactor ||
+    a.drawOvertimeMode !== b.drawOvertimeMode ||
+    a.enableHanamiZake !== b.enableHanamiZake ||
+    a.enableTsukimiZake !== b.enableTsukimiZake ||
+    a.noYakuPolicy !== b.noYakuPolicy ||
+    a.noYakuParentPoints !== b.noYakuParentPoints ||
+    a.noYakuChildPoints !== b.noYakuChildPoints ||
+    a.enableFourCardsYaku !== b.enableFourCardsYaku ||
+    a.enableAmeNagare !== b.enableAmeNagare ||
+    a.enableKiriNagare !== b.enableKiriNagare ||
+    a.koikoiLimit !== b.koikoiLimit ||
+    a.dealerRotationMode !== b.dealerRotationMode ||
+    a.enableDrawOvertime !== b.enableDrawOvertime ||
+    a.drawOvertimeRounds !== b.drawOvertimeRounds
+  ) {
+    return false
+  }
+  return (
+    a.yakuEnabled.goko === b.yakuEnabled.goko &&
+    a.yakuEnabled.shiko === b.yakuEnabled.shiko &&
+    a.yakuEnabled['ame-shiko'] === b.yakuEnabled['ame-shiko'] &&
+    a.yakuEnabled.sanko === b.yakuEnabled.sanko &&
+    a.yakuEnabled.shiten === b.yakuEnabled.shiten &&
+    a.yakuEnabled.inoshikacho === b.yakuEnabled.inoshikacho &&
+    a.yakuEnabled['hanami-zake'] === b.yakuEnabled['hanami-zake'] &&
+    a.yakuEnabled['tsukimi-zake'] === b.yakuEnabled['tsukimi-zake'] &&
+    a.yakuEnabled.akatan === b.yakuEnabled.akatan &&
+    a.yakuEnabled.aotan === b.yakuEnabled.aotan &&
+    a.yakuEnabled.tane === b.yakuEnabled.tane &&
+    a.yakuEnabled.tanzaku === b.yakuEnabled.tanzaku &&
+    a.yakuEnabled.kasu === b.yakuEnabled.kasu &&
+    a.yakuPoints.goko === b.yakuPoints.goko &&
+    a.yakuPoints.shiko === b.yakuPoints.shiko &&
+    a.yakuPoints['ame-shiko'] === b.yakuPoints['ame-shiko'] &&
+    a.yakuPoints.sanko === b.yakuPoints.sanko &&
+    a.yakuPoints.shiten === b.yakuPoints.shiten &&
+    a.yakuPoints.inoshikacho === b.yakuPoints.inoshikacho &&
+    a.yakuPoints['hanami-zake'] === b.yakuPoints['hanami-zake'] &&
+    a.yakuPoints['tsukimi-zake'] === b.yakuPoints['tsukimi-zake'] &&
+    a.yakuPoints.akatan === b.yakuPoints.akatan &&
+    a.yakuPoints.aotan === b.yakuPoints.aotan &&
+    a.yakuPoints.tane === b.yakuPoints.tane &&
+    a.yakuPoints.tanzaku === b.yakuPoints.tanzaku &&
+    a.yakuPoints.kasu === b.yakuPoints.kasu
+  )
+}
+
+function normalizeLoadedGameState(state: KoiKoiGameState): KoiKoiGameState {
+  const config = normalizeGameConfig(state.config)
+  const player1 = state.players[0]
+  const player2 = state.players[1]
+  const roundScoreHistory = Array.isArray((state as { readonly roundScoreHistory?: unknown }).roundScoreHistory)
+    ? state.roundScoreHistory
+    : []
+  return {
+    ...state,
+    config,
+    players: [
+      {
+        ...player1,
+        completedYaku: calculateYaku(player1.captured, config.localRules),
+      },
+      {
+        ...player2,
+        completedYaku: calculateYaku(player2.captured, config.localRules),
+      },
+    ] as const,
+    roundScoreHistory,
+  }
+}
+
+function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly string[] {
+  const notes: string[] = []
+  switch (localRules.noYakuPolicy) {
+    case 'both-zero':
+      notes.push('役が1つもない場合は 0点 になります。')
+      break
+    case 'seat-points':
+      notes.push(`役が1つもない場合は 親${localRules.noYakuParentPoints}点 / 子${localRules.noYakuChildPoints}点 です。`)
+      break
+  }
+
+  if (localRules.koiKoiBonusMode === 'none') {
+    notes.push('こいこい時の倍率処理は無効です。')
+  } else if (localRules.koiKoiBonusMode === 'additive') {
+    notes.push(
+      `倍率方式は加算式です（7点以上: +1倍 / 自分こいこい: +${Math.max(0, localRules.selfKoiBonusFactor - 1)}倍/回 / 相手こいこい: +${Math.max(0, localRules.opponentKoiBonusFactor - 1)}倍/回）。`,
+    )
+  } else {
+    notes.push(
+      `倍率方式は乗算式です（7点以上: ×2 / 自分こいこい: ×${localRules.selfKoiBonusFactor}/回 / 相手こいこい: ×${localRules.opponentKoiBonusFactor}/回）。`,
+    )
+  }
+  if (localRules.enableKoiKoiShowdown) {
+    notes.push('こいこい合戦: 相手がこいこい済みでも、役成立時にこいこいを続行できます。')
+  }
+
+  if (localRules.enableKoiKoiShowdown && localRules.koiKoiBonusMode !== 'none' && localRules.koikoiLimit > 0) {
+    notes.push(`同一プレイヤーのこいこい回数は ${localRules.koikoiLimit} 回までです。`)
+  }
+  if (!localRules.yakuEnabled['hanami-zake'] || !localRules.yakuEnabled['tsukimi-zake']) {
+    notes.push('ローカルルールで無効化した役は判定されません。')
+  }
+  if (localRules.yakuEnabled['hanami-zake'] && localRules.enableAmeNagare) {
+    notes.push('雨流れ: 柳に小野道風を取ると花見で一杯は不成立になります。')
+  }
+  if (localRules.yakuEnabled['tsukimi-zake'] && localRules.enableKiriNagare) {
+    notes.push('霧流れ: 桐札を取ると月見で一杯は不成立になります。')
+  }
+  return notes
+}
 
 function createCommandSeed(): number {
   return Math.floor(Math.random() * COMMAND_SEED_RANGE) >>> 0
@@ -326,62 +567,111 @@ function getPcYakuEntryRank(key: string): number {
   return 4
 }
 
+function filterInMatchYakuEntries(entries: readonly VisibleYakuProgressState[]): readonly VisibleYakuProgressState[] {
+  return entries.filter((entry) => entry.key !== 'shiten')
+}
+
 function buildRoundPointBreakdownLines(game: KoiKoiGameState): readonly string[] {
   if (game.roundReason !== 'stop' || !game.roundWinner) {
     return []
   }
 
+  const localRules = normalizeGameConfig(game.config).localRules
   const winnerIndex: 0 | 1 = game.roundWinner === 'player1' ? 0 : 1
   const winner = game.players[winnerIndex]
   const opponentIndex: 0 | 1 = winnerIndex === 0 ? 1 : 0
   const yaku = [...winner.completedYaku].sort((a, b) => b.points - a.points)
-  const basePoints = Math.max(1, getYakuTotalPoints(winner.completedYaku))
-
-  const canApplyHighPointBonus = basePoints >= 7
-  const canApplyOpponentKoiBonus = game.koikoiCounts[opponentIndex] > 0
-  const multiplierCandidates = [
-    { highPointBonus: false, opponentKoiBonus: false },
-    { highPointBonus: true, opponentKoiBonus: false },
-    { highPointBonus: false, opponentKoiBonus: true },
-    { highPointBonus: true, opponentKoiBonus: true },
-  ].filter((candidate) => {
-    if (candidate.highPointBonus && !canApplyHighPointBonus) {
-      return false
-    }
-    if (candidate.opponentKoiBonus && !canApplyOpponentKoiBonus) {
-      return false
-    }
-    return true
-  })
-
-  const matchedMultiplier = multiplierCandidates.find((candidate) => {
-    const total =
-      basePoints
-      * (candidate.highPointBonus ? 2 : 1)
-      * (candidate.opponentKoiBonus ? 2 : 1)
-    return total === game.roundPoints
-  })
+  const yakuTotal = getYakuTotalPoints(winner.completedYaku)
+  const isParent = winnerIndex === game.roundStarterIndex
+  const basePoints = yakuTotal > 0
+    ? yakuTotal
+    : localRules.noYakuPolicy === 'both-zero'
+      ? 0
+      : localRules.noYakuPolicy === 'seat-points'
+        ? isParent
+          ? localRules.noYakuParentPoints
+          : localRules.noYakuChildPoints
+        : 0
+  const baseLine = yakuTotal > 0
+    ? `役合計: ${basePoints}点`
+    : localRules.noYakuPolicy === 'both-zero'
+      ? '役なし: 双方0点ルールで 0点'
+      : localRules.noYakuPolicy === 'seat-points'
+        ? `役なし: ${isParent ? `親${localRules.noYakuParentPoints}` : `子${localRules.noYakuChildPoints}`}点`
+        : '役なし: 双方0点ルールで 0点'
+  const hasHighPointBonus = basePoints >= 7
+  const selfKoiCount = game.koikoiCounts[winnerIndex]
+  const opponentKoiCount = game.koikoiCounts[opponentIndex]
+  const hasSelfKoiBonus = selfKoiCount > 0
+  const hasOpponentKoiBonus = opponentKoiCount > 0
+  const selfAdditiveBonus = Math.max(0, localRules.selfKoiBonusFactor - 1)
+  const opponentAdditiveBonus = Math.max(0, localRules.opponentKoiBonusFactor - 1)
+  const expectedMultiplier =
+    basePoints <= 0 || localRules.koiKoiBonusMode === 'none'
+      ? 1
+      : localRules.koiKoiBonusMode === 'additive'
+        ? 1
+          + Number(hasHighPointBonus)
+          + (hasSelfKoiBonus ? selfKoiCount * selfAdditiveBonus : 0)
+          + (hasOpponentKoiBonus ? opponentKoiCount * opponentAdditiveBonus : 0)
+        : (hasHighPointBonus ? 2 : 1)
+          * (hasSelfKoiBonus ? localRules.selfKoiBonusFactor ** selfKoiCount : 1)
+          * (hasOpponentKoiBonus ? localRules.opponentKoiBonusFactor ** opponentKoiCount : 1)
+  const expectedRoundPoints = basePoints * expectedMultiplier
 
   const lines: string[] = yaku.length > 0
     ? yaku.map((item) => `${item.name}: ${item.points}点`)
-    : ['役なし: 1点']
-  lines.push(`役合計: ${basePoints}点`)
+    : ['役なし']
+  lines.push(baseLine)
 
-  if (matchedMultiplier) {
-    const appliedMultipliers: number[] = []
-    if (matchedMultiplier.highPointBonus) {
-      lines.push('7点以上ボーナス: ×2')
-      appliedMultipliers.push(2)
+  if (localRules.koiKoiBonusMode === 'none' || basePoints <= 0) {
+    lines.push(`最終得点: ${game.roundPoints}点`)
+    return lines
+  }
+
+  if (hasHighPointBonus) {
+    lines.push(localRules.koiKoiBonusMode === 'additive' ? '7点以上ボーナス: +1倍' : '7点以上ボーナス: ×2')
+  }
+  if (hasSelfKoiBonus) {
+    lines.push(
+      localRules.koiKoiBonusMode === 'additive'
+        ? `自分こいこいボーナス: +${selfAdditiveBonus}倍 × ${selfKoiCount}回`
+        : `自分こいこいボーナス: ×${localRules.selfKoiBonusFactor}^${selfKoiCount}`,
+    )
+  }
+  if (hasOpponentKoiBonus) {
+    lines.push(
+      localRules.koiKoiBonusMode === 'additive'
+        ? `相手こいこいボーナス: +${opponentAdditiveBonus}倍 × ${opponentKoiCount}回`
+        : `相手こいこいボーナス: ×${localRules.opponentKoiBonusFactor}^${opponentKoiCount}`,
+    )
+  }
+
+  const hasAnyBonus = hasHighPointBonus
+    || (hasSelfKoiBonus && (
+      localRules.koiKoiBonusMode === 'multiplicative'
+      || selfAdditiveBonus > 0
+    ))
+    || (hasOpponentKoiBonus && (
+      localRules.koiKoiBonusMode === 'multiplicative'
+      || opponentAdditiveBonus > 0
+    ))
+  if (expectedRoundPoints === game.roundPoints && hasAnyBonus) {
+    if (localRules.koiKoiBonusMode === 'additive') {
+      lines.push(`最終得点: ${basePoints} × ${expectedMultiplier} = ${game.roundPoints}点`)
+      return lines
     }
-    if (matchedMultiplier.opponentKoiBonus) {
-      lines.push('相手こいこいボーナス: ×2')
-      appliedMultipliers.push(2)
+    const multiplierParts: string[] = []
+    if (hasHighPointBonus) {
+      multiplierParts.push('2')
     }
-    if (appliedMultipliers.length > 0) {
-      lines.push(`最終得点: ${basePoints} × ${appliedMultipliers.join(' × ')} = ${game.roundPoints}点`)
-    } else {
-      lines.push(`最終得点: ${game.roundPoints}点`)
+    if (hasSelfKoiBonus) {
+      multiplierParts.push(`${localRules.selfKoiBonusFactor}^${selfKoiCount}`)
     }
+    if (hasOpponentKoiBonus) {
+      multiplierParts.push(`${localRules.opponentKoiBonusFactor}^${opponentKoiCount}`)
+    }
+    lines.push(`最終得点: ${basePoints} × ${multiplierParts.join(' × ')} = ${game.roundPoints}点`)
     return lines
   }
 
@@ -584,16 +874,23 @@ function RoleYakuPanel(props: {
   captured: readonly HanafudaCard[]
   yaku: readonly Yaku[]
   blockedCardIds: ReadonlySet<string>
+  ruleOptions?: {
+    enableHanamiZake?: boolean
+    enableTsukimiZake?: boolean
+    enableFourCardsYaku?: boolean
+    enableAmeNagare?: boolean
+    enableKiriNagare?: boolean
+  }
   active: boolean
   side: 'left' | 'right'
 }) {
-  const { captureZoneId, title, score, captured, yaku, blockedCardIds, active, side } = props
+  const { captureZoneId, title, score, captured, yaku, blockedCardIds, ruleOptions, active, side } = props
   const progressEntries = useMemo(
-    () => buildYakuProgressEntries(captured, yaku, blockedCardIds),
-    [captured, yaku, blockedCardIds],
+    () => buildYakuProgressEntries(captured, yaku, blockedCardIds, ruleOptions),
+    [blockedCardIds, captured, ruleOptions, yaku],
   )
   const visibleProgressEntries = useMemo(
-    () => buildVisibleYakuProgressEntries(progressEntries, { includeDoneCards: true }),
+    () => filterInMatchYakuEntries(buildVisibleYakuProgressEntries(progressEntries, { includeDoneCards: true })),
     [progressEntries],
   )
   const pcOrderedProgressEntries = useMemo(
@@ -1407,7 +1704,11 @@ function DeckZone(props: {
 }
 
 function App() {
-  const [game, setGame] = useState<KoiKoiGameState>(() => createNewGame())
+  const [game, setGame] = useState<KoiKoiGameState>(() => createNewGame({
+    ...DEFAULT_CONFIG,
+    maxRounds: getInitialRoundCount(),
+    localRules: getInitialLocalRules(),
+  }))
   const [isBootstrapRestored, setIsBootstrapRestored] = useState(false)
   const [remoteQueueVersion, setRemoteQueueVersion] = useState(0)
   const remoteCommandQueueRef = useRef<TurnCommand[]>([])
@@ -1429,7 +1730,9 @@ function App() {
       } else {
         const cpuCheckpoint = loadCpuCheckpoint()
         if (cpuCheckpoint?.isMatchSurfaceVisible) {
-          setGame(cpuCheckpoint.state)
+          setGame(normalizeLoadedGameState(cpuCheckpoint.state))
+          setIsMatchSurfaceVisible(true)
+        } else {
           setIsMatchSurfaceVisible(true)
         }
       }
@@ -1468,11 +1771,13 @@ function App() {
   const appContainerRef = useRef<HTMLDivElement>(null)
   const [isMatchSurfaceVisible, setIsMatchSurfaceVisible] = useState(false)
   const [isFinalResultVisible, setIsFinalResultVisible] = useState(false)
-  const [selectedRoundCount, setSelectedRoundCount] = useState<(typeof ROUND_COUNT_OPTIONS)[number] | null>(null)
+  const [selectedRoundCount, setSelectedRoundCount] = useState<(typeof ROUND_COUNT_OPTIONS)[number]>(() => getInitialRoundCount())
+  const [draftLocalRules, setDraftLocalRules] = useState<LocalRuleSettings>(() => getInitialLocalRules())
   const [pendingHandPlaceholder, setPendingHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
   const [pendingAiHandPlaceholder, setPendingAiHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
 
   const [isScoreTableVisible, setIsScoreTableVisible] = useState(false)
+  const [isLocalRulePanelVisible, setIsLocalRulePanelVisible] = useState(false)
   const [isRuleHelpVisible, setIsRuleHelpVisible] = useState(false)
   const [ruleHelpPageIndex, setRuleHelpPageIndex] = useState(0)
   const ruleHelpSwipeStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null)
@@ -1518,15 +1823,64 @@ function App() {
     completedYaku: humanPlayer.completedYaku,
     score: humanPlayer.score,
   }
+  const activeLocalRules = useMemo(
+    () => normalizeLocalRuleSettings(game.config.localRules),
+    [game.config.localRules],
+  )
+  const localRulesForPanel = multiplayer.mode === 'cpu' ? draftLocalRules : activeLocalRules
   const aiBlockedCardIds = useMemo(() => new Set(humanPanelView.captured.map((card) => card.id)), [humanPanelView.captured])
   const humanBlockedCardIds = useMemo(() => new Set(aiPanelView.captured.map((card) => card.id)), [aiPanelView.captured])
   const aiVisibleProgressEntries = useMemo(
-    () => buildVisibleYakuProgressEntries(buildYakuProgressEntries(aiPanelView.captured, aiPanelView.completedYaku, aiBlockedCardIds)),
-    [aiPanelView.captured, aiPanelView.completedYaku, aiBlockedCardIds],
+    () => filterInMatchYakuEntries(buildVisibleYakuProgressEntries(
+      buildYakuProgressEntries(
+        aiPanelView.captured,
+        aiPanelView.completedYaku,
+        aiBlockedCardIds,
+        {
+          enableHanamiZake: activeLocalRules.yakuEnabled['hanami-zake'],
+          enableTsukimiZake: activeLocalRules.yakuEnabled['tsukimi-zake'],
+          enableFourCardsYaku: activeLocalRules.yakuEnabled.shiten,
+          enableAmeNagare: activeLocalRules.yakuEnabled['hanami-zake'] && activeLocalRules.enableAmeNagare,
+          enableKiriNagare: activeLocalRules.yakuEnabled['tsukimi-zake'] && activeLocalRules.enableKiriNagare,
+        },
+      ),
+    )),
+    [
+      activeLocalRules.enableAmeNagare,
+      activeLocalRules.enableKiriNagare,
+      activeLocalRules.yakuEnabled['hanami-zake'],
+      activeLocalRules.yakuEnabled['tsukimi-zake'],
+      activeLocalRules.yakuEnabled.shiten,
+      aiBlockedCardIds,
+      aiPanelView.captured,
+      aiPanelView.completedYaku,
+    ],
   )
   const humanVisibleProgressEntries = useMemo(
-    () => buildVisibleYakuProgressEntries(buildYakuProgressEntries(humanPanelView.captured, humanPanelView.completedYaku, humanBlockedCardIds)),
-    [humanPanelView.captured, humanPanelView.completedYaku, humanBlockedCardIds],
+    () => filterInMatchYakuEntries(buildVisibleYakuProgressEntries(
+      buildYakuProgressEntries(
+        humanPanelView.captured,
+        humanPanelView.completedYaku,
+        humanBlockedCardIds,
+        {
+          enableHanamiZake: activeLocalRules.yakuEnabled['hanami-zake'],
+          enableTsukimiZake: activeLocalRules.yakuEnabled['tsukimi-zake'],
+          enableFourCardsYaku: activeLocalRules.yakuEnabled.shiten,
+          enableAmeNagare: activeLocalRules.yakuEnabled['hanami-zake'] && activeLocalRules.enableAmeNagare,
+          enableKiriNagare: activeLocalRules.yakuEnabled['tsukimi-zake'] && activeLocalRules.enableKiriNagare,
+        },
+      ),
+    )),
+    [
+      activeLocalRules.enableAmeNagare,
+      activeLocalRules.enableKiriNagare,
+      activeLocalRules.yakuEnabled['hanami-zake'],
+      activeLocalRules.yakuEnabled['tsukimi-zake'],
+      activeLocalRules.yakuEnabled.shiten,
+      humanBlockedCardIds,
+      humanPanelView.captured,
+      humanPanelView.completedYaku,
+    ],
   )
   const clearKoikoiDecisionSequenceTimers = useCallback((): void => {
     if (koikoiDecisionYakuTimerRef.current !== null) {
@@ -1539,12 +1893,19 @@ function App() {
   const isCpuAiTurn = multiplayer.mode === 'cpu' && isAiTurn
   const canAutoAdvance = multiplayer.mode === 'cpu' || isLocalTurn
   const isLobbyConnected = multiplayer.mode !== 'cpu' && multiplayer.connectionStatus === 'connected'
+  const hasMatchStarted = game.round > 1 || game.turnHistory.length > 0 || game.phase !== 'selectHandCard'
+  const isCpuRuleChangeDeferred = multiplayer.mode === 'cpu' && hasMatchStarted
+  const canEditLocalRules = !isLobbyConnected && (multiplayer.mode === 'cpu' || !hasMatchStarted)
+  const canSelectRoundCount = !isLobbyConnected && (multiplayer.mode === 'cpu' || !hasMatchStarted)
   const isKoikoiDecisionSequencing = game.phase === 'koikoiDecision' && !isKoikoiDecisionChoiceVisible
   const koikoiEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'koikoi')
   const stopEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'stop')
   const interactionLocked = moveEffects.length > 0 || koikoiEffectActive
   const humanDisplayName = multiplayer.mode === 'cpu' ? humanPlayer.name : 'あなた'
-  const opponentDisplayName = multiplayer.mode === 'cpu' ? aiPlayer.name : '相手'
+  const cpuDifficultyLabel = AI_DIFFICULTY_LABELS[game.config.aiDifficulty] ?? ''
+  const opponentDisplayName = multiplayer.mode === 'cpu'
+    ? `${aiPlayer.name}（${cpuDifficultyLabel}）`
+    : '相手'
   const player1ScoreTableName = multiplayer.mode === 'cpu'
     ? game.players[0].name
     : game.players[0].id === humanPlayer.id ? 'あなた' : '相手'
@@ -1559,6 +1920,10 @@ function App() {
   const isLandscapeMobileRuleHelpMode =
     isLandscapeOrientation && (isMobileLayout || isLandscapeFullscreen)
   const useMobileRuleHelpPagination = isMobileLayout && !isLandscapeMobileRuleHelpMode
+  const ruleHelpScoringNotes = useMemo(
+    () => buildRuleHelpScoringNotes(activeLocalRules),
+    [activeLocalRules],
+  )
   const ruleHelpPages = useMemo<readonly RuleHelpPage[]>(() => {
     const monthRanges: ReadonlyArray<readonly [number, number]> = (() => {
       if (!useMobileRuleHelpPagination) {
@@ -1600,7 +1965,7 @@ function App() {
         key: 'yaku-main',
         title: '役一覧（基本役）',
         subtitle: '点数役・枚数役',
-        content: <RuleHelpYakuPage entries={RULE_HELP_BASIC_YAKU_ENTRIES} notes={RULE_HELP_SCORING_NOTES} />,
+        content: <RuleHelpYakuPage entries={RULE_HELP_BASIC_YAKU_ENTRIES} notes={ruleHelpScoringNotes} />,
       })
     } else {
       const estimatedPanelHeight = Math.min(ruleHelpViewport.height * 0.9, 780)
@@ -1617,7 +1982,7 @@ function App() {
           key: `yaku-main-${index + 1}`,
           title: totalPages > 1 ? `役一覧（基本役 ${index + 1}/${totalPages}）` : '役一覧（基本役）',
           subtitle: '点数役・枚数役',
-          content: <RuleHelpYakuPage entries={chunk} notes={isLastChunk ? RULE_HELP_SCORING_NOTES : undefined} />,
+          content: <RuleHelpYakuPage entries={chunk} notes={isLastChunk ? ruleHelpScoringNotes : undefined} />,
         })
       })
     }
@@ -1626,7 +1991,7 @@ function App() {
       ...monthPages,
       ...yakuPages,
     ]
-  }, [ruleHelpViewport.height, ruleHelpViewport.width, useMobileRuleHelpPagination])
+  }, [ruleHelpScoringNotes, ruleHelpViewport.height, ruleHelpViewport.width, useMobileRuleHelpPagination])
   const currentRuleHelpPage = ruleHelpPages[ruleHelpPageIndex] ?? ruleHelpPages[0]
 
   useEffect(() => {
@@ -1723,12 +2088,22 @@ function App() {
     if (!isMatchSurfaceVisible && multiplayer.mode === 'cpu') {
       return
     }
+    if (multiplayer.mode === 'cpu' && hasMatchStarted) {
+      return
+    }
     const nextRoundCount = game.config.maxRounds as (typeof ROUND_COUNT_OPTIONS)[number]
     if (!ROUND_COUNT_OPTIONS.includes(nextRoundCount)) {
       return
     }
     setSelectedRoundCount((current) => (current === nextRoundCount ? current : nextRoundCount))
-  }, [game.config.maxRounds, isMatchSurfaceVisible, multiplayer.mode])
+  }, [game.config.maxRounds, hasMatchStarted, isMatchSurfaceVisible, multiplayer.mode])
+
+  useEffect(() => {
+    if (multiplayer.mode === 'cpu' && hasMatchStarted) {
+      return
+    }
+    setDraftLocalRules((current) => (areLocalRulesEqual(current, activeLocalRules) ? current : activeLocalRules))
+  }, [activeLocalRules, hasMatchStarted, multiplayer.mode])
 
   useEffect(() => {
     if (!isBootstrapRestored) {
@@ -2005,9 +2380,15 @@ function App() {
     () => flattenNewYakuCards(sortedNewYaku),
     [sortedNewYaku],
   )
+  const koiKoiLimitEnabled = activeLocalRules.koiKoiBonusMode !== 'none' && activeLocalRules.koikoiLimit > 0
+  const canDeclareKoiKoiNow = !koiKoiLimitEnabled || game.koikoiCounts[localPlayerIndex] < activeLocalRules.koikoiLimit
   const koikoiDecisionYakuLines = useMemo(() => {
-    return sortedNewYaku.map((item) => `${item.name} (${item.points}点)`)
-  }, [sortedNewYaku])
+    const lines = sortedNewYaku.map((item) => `${item.name} (${item.points}点)`)
+    if (game.phase === 'koikoiDecision' && !isAiTurn && !canDeclareKoiKoiNow) {
+      lines.push(`こいこい上限（${activeLocalRules.koikoiLimit}回）に達しているため、上がりのみ選択できます。`)
+    }
+    return lines
+  }, [activeLocalRules.koikoiLimit, canDeclareKoiKoiNow, game.phase, isAiTurn, sortedNewYaku])
   useEffect(() => {
     if (game.phase !== 'koikoiDecision') {
       koikoiDecisionSequenceKeyRef.current = null
@@ -2540,6 +2921,7 @@ function App() {
         setGame((current) => createNewGame({
           ...current.config,
           maxRounds: command.maxRounds,
+          ...(command.localRules ? { localRules: normalizeLocalRuleSettings(command.localRules) } : {}),
         }, command.seed))
         return
     }
@@ -3248,7 +3630,9 @@ function App() {
     if (
       target.closest('.app-chrome-panel') ||
       target.closest('.header-settings-toggle-button') ||
-      target.closest('.score-table-overlay')
+      target.closest('.score-table-overlay') ||
+      target.closest('.local-rule-overlay') ||
+      target.closest('.rule-help-overlay')
     ) {
       return
     }
@@ -3289,6 +3673,7 @@ function App() {
     setTurnDecisionCallouts([])
     setAnimatedAddToFieldHistoryLength(0)
     setRemoteQueueVersion(0)
+    setIsLocalRulePanelVisible(false)
     setIsRuleHelpVisible(false)
     setRuleHelpPageIndex(0)
     remoteCommandQueueRef.current = []
@@ -3299,9 +3684,6 @@ function App() {
   }, [])
 
   const handleSwitchToCpu = useCallback((): void => {
-    if (selectedRoundCount === null) {
-      return
-    }
     clearCpuCheckpoint()
     setIsMatchSurfaceVisible(true)
     setIsChromeCollapsed(true)
@@ -3310,26 +3692,24 @@ function App() {
     setGame(createNewGame({
       ...game.config,
       maxRounds: selectedRoundCount,
+      localRules: localRulesForPanel,
       enableAI: true,
       player1Name: DEFAULT_CONFIG.player1Name,
       player2Name: DEFAULT_CONFIG.player2Name,
     }))
-  }, [game.config, multiplayer, resetTransientUiState, selectedRoundCount])
+  }, [game.config, localRulesForPanel, multiplayer, resetTransientUiState, selectedRoundCount])
 
   const handleChangeAiDifficulty = useCallback((difficulty: 'yowai' | 'futsuu' | 'tsuyoi' | 'yabai' | 'oni' | 'kami'): void => {
     if (multiplayer.mode !== 'cpu') {
       return
     }
-    setGame(createNewGame({
-      ...game.config,
-      aiDifficulty: difficulty,
+    setGame((prev) => ({
+      ...prev,
+      config: { ...prev.config, aiDifficulty: difficulty },
     }))
-  }, [game.config, multiplayer.mode])
+  }, [multiplayer.mode])
 
   const handleStartHost = useCallback((): void => {
-    if (selectedRoundCount === null) {
-      return
-    }
     clearCpuCheckpoint()
     setIsMatchSurfaceVisible(false)
     setIsChromeCollapsed(false)  // 部屋作成時はヘッダーを隠さない
@@ -3337,13 +3717,14 @@ function App() {
     const initial = createNewGame({
       ...game.config,
       maxRounds: selectedRoundCount,
+      localRules: localRulesForPanel,
       enableAI: false,
       player1Name: 'あなた',
       player2Name: '相手',
     })
     setGame(initial)
     multiplayer.startHost(initial, undefined, false)
-  }, [game.config, multiplayer, resetTransientUiState, selectedRoundCount])
+  }, [game.config, localRulesForPanel, multiplayer, resetTransientUiState, selectedRoundCount])
 
   const handleJoinGuest = useCallback((): void => {
     clearCpuCheckpoint()
@@ -3352,22 +3733,32 @@ function App() {
     resetTransientUiState()
     const initial = createNewGame({
       ...game.config,
+      localRules: localRulesForPanel,
       enableAI: false,
       player1Name: '相手',
       player2Name: 'あなた',
     })
     setGame(initial)
     multiplayer.joinAsGuest(initial)
-  }, [game.config, isMobileLayout, multiplayer, resetTransientUiState])
+  }, [game.config, isMobileLayout, localRulesForPanel, multiplayer, resetTransientUiState])
 
   const handleLeaveMultiplayer = useCallback((): void => {
     clearCpuCheckpoint()
     setIsMatchSurfaceVisible(false)
     setIsChromeCollapsed(isMobileLayout)
-    setSelectedRoundCount(null)
     resetTransientUiState()
     multiplayer.leaveMultiplayer()
-    setGame(createNewGame())
+    const restoredRoundCount = getInitialRoundCount()
+    const restoredLocalRules = getInitialLocalRules()
+    setSelectedRoundCount(restoredRoundCount)
+    setGame(createNewGame({
+      ...DEFAULT_CONFIG,
+      maxRounds: restoredRoundCount,
+      localRules: restoredLocalRules,
+      enableAI: true,
+      player1Name: DEFAULT_CONFIG.player1Name,
+      player2Name: DEFAULT_CONFIG.player2Name,
+    }))
   }, [isMobileLayout, multiplayer, resetTransientUiState])
 
   const restartWithConfig = useCallback((nextConfig: KoiKoiGameState['config']): void => {
@@ -3390,35 +3781,298 @@ function App() {
     multiplayer.reconnect(gameRef.current)
   }, [multiplayer, resetTransientUiState])
 
-  const handleRestart = useCallback((): void => {
+  const applyLocalRuleChange = useCallback((nextRules: LocalRuleSettings): void => {
+    const normalized = normalizeLocalRuleSettings(nextRules)
     if (isLobbyConnected) {
-      const currentMaxRounds = ROUND_COUNT_OPTIONS.includes(game.config.maxRounds as (typeof ROUND_COUNT_OPTIONS)[number])
-        ? (game.config.maxRounds as (typeof ROUND_COUNT_OPTIONS)[number])
-        : ROUND_COUNT_OPTIONS[0]
-      resetTransientUiState()
-      executeTurnCommand({ type: 'restartGame', maxRounds: currentMaxRounds })
       return
     }
-    restartWithConfig(game.config)
-  }, [executeTurnCommand, game.config, isLobbyConnected, resetTransientUiState, restartWithConfig])
-
-  const hasMatchStarted = game.round > 1 || game.turnHistory.length > 0 || game.phase !== 'selectHandCard'
-  const canSelectRoundCount = !hasMatchStarted && !isLobbyConnected
-  const handleSelectRoundCount = useCallback((maxRounds: (typeof ROUND_COUNT_OPTIONS)[number]): void => {
-    setSelectedRoundCount(maxRounds)
-    if (!isMatchSurfaceVisible || !canSelectRoundCount || game.config.maxRounds === maxRounds) {
+    saveLocalRuleSettings(normalized)
+    setDraftLocalRules((current) => (areLocalRulesEqual(current, normalized) ? current : normalized))
+    if (multiplayer.mode === 'cpu') {
+      if (hasMatchStarted) {
+        return
+      }
+      setGame((prev) => ({
+        ...prev,
+        config: { ...prev.config, localRules: normalized },
+      }))
       return
     }
-    if (multiplayer.mode !== 'cpu') {
-      resetTransientUiState()
-      executeTurnCommand({ type: 'restartGame', maxRounds })
+    if (hasMatchStarted) {
       return
     }
     restartWithConfig({
       ...game.config,
-      maxRounds,
+      localRules: normalized,
     })
-  }, [canSelectRoundCount, executeTurnCommand, game.config, isMatchSurfaceVisible, multiplayer.mode, resetTransientUiState, restartWithConfig])
+  }, [game.config, hasMatchStarted, isLobbyConnected, multiplayer.mode, restartWithConfig])
+
+  const handleChangeYakuPoint = useCallback((yakuType: YakuType, rawValue: string): void => {
+    const parsed = Number.parseInt(rawValue, 10)
+    const nextValue = Number.isFinite(parsed) ? parsed : 0
+    applyLocalRuleChange(
+      normalizeLocalRuleSettings({
+        ...localRulesForPanel,
+        yakuPoints: {
+          ...localRulesForPanel.yakuPoints,
+          [yakuType]: nextValue,
+        },
+      }),
+    )
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeYakuEnabled = useCallback((yakuType: YakuType, enabled: boolean): void => {
+    const nextRules = normalizeLocalRuleSettings({
+      ...localRulesForPanel,
+      yakuEnabled: {
+        ...localRulesForPanel.yakuEnabled,
+        [yakuType]: enabled,
+      },
+    })
+
+    if (!enabled) {
+      if (yakuType === 'hanami-zake') {
+        applyLocalRuleChange({ ...nextRules, enableAmeNagare: false })
+        return
+      }
+      if (yakuType === 'tsukimi-zake') {
+        applyLocalRuleChange({ ...nextRules, enableKiriNagare: false })
+        return
+      }
+    }
+    applyLocalRuleChange(nextRules)
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeKoiKoiBonusMode = useCallback((mode: LocalRuleSettings['koiKoiBonusMode']): void => {
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      koiKoiBonusMode: mode,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleToggleKoiKoiShowdown = useCallback((enabled: boolean): void => {
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      enableKoiKoiShowdown: enabled,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeSelfKoiBonusFactor = useCallback((rawValue: string): void => {
+    const parsed = Number.parseInt(rawValue, 10)
+    const nextValue = Number.isFinite(parsed) ? parsed : DEFAULT_LOCAL_RULE_SETTINGS.selfKoiBonusFactor
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      selfKoiBonusFactor: nextValue,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeOpponentKoiBonusFactor = useCallback((rawValue: string): void => {
+    const parsed = Number.parseInt(rawValue, 10)
+    const nextValue = Number.isFinite(parsed) ? parsed : DEFAULT_LOCAL_RULE_SETTINGS.opponentKoiBonusFactor
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      opponentKoiBonusFactor: nextValue,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeNoYakuPolicy = useCallback((policy: LocalRuleSettings['noYakuPolicy']): void => {
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      noYakuPolicy: policy,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeNoYakuParentPoints = useCallback((rawValue: string): void => {
+    const parsed = Number.parseInt(rawValue, 10)
+    const nextValue = Number.isFinite(parsed) ? parsed : DEFAULT_LOCAL_RULE_SETTINGS.noYakuParentPoints
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      noYakuParentPoints: nextValue,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeNoYakuChildPoints = useCallback((rawValue: string): void => {
+    const parsed = Number.parseInt(rawValue, 10)
+    const nextValue = Number.isFinite(parsed) ? parsed : DEFAULT_LOCAL_RULE_SETTINGS.noYakuChildPoints
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      noYakuChildPoints: nextValue,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleToggleAmeNagare = useCallback((enabled: boolean): void => {
+    if (!localRulesForPanel.yakuEnabled['hanami-zake']) {
+      return
+    }
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      enableAmeNagare: enabled,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleToggleKiriNagare = useCallback((enabled: boolean): void => {
+    if (!localRulesForPanel.yakuEnabled['tsukimi-zake']) {
+      return
+    }
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      enableKiriNagare: enabled,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeKoikoiLimit = useCallback((rawValue: string): void => {
+    const parsed = Number.parseInt(rawValue, 10)
+    const nextValue = Number.isFinite(parsed) ? parsed : DEFAULT_LOCAL_RULE_SETTINGS.koikoiLimit
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      koikoiLimit: nextValue,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeDealerRotationMode = useCallback((mode: LocalRuleSettings['dealerRotationMode']): void => {
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      dealerRotationMode: mode,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleToggleDrawOvertime = useCallback((enabled: boolean): void => {
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      enableDrawOvertime: enabled,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeDrawOvertimeMode = useCallback((mode: LocalRuleSettings['drawOvertimeMode']): void => {
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      drawOvertimeMode: mode,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleChangeDrawOvertimeRounds = useCallback((rawValue: string): void => {
+    const parsed = Number.parseInt(rawValue, 10)
+    const nextValue = Number.isFinite(parsed) ? parsed : DEFAULT_LOCAL_RULE_SETTINGS.drawOvertimeRounds
+    applyLocalRuleChange({
+      ...localRulesForPanel,
+      drawOvertimeRounds: nextValue,
+    })
+  }, [applyLocalRuleChange, localRulesForPanel])
+
+  const handleRestart = useCallback((): void => {
+    if (isLobbyConnected) {
+      const currentMaxRounds = ROUND_COUNT_OPTIONS.includes(game.config.maxRounds as (typeof ROUND_COUNT_OPTIONS)[number])
+        ? (game.config.maxRounds as (typeof ROUND_COUNT_OPTIONS)[number])
+        : DEFAULT_ROUND_COUNT
+      resetTransientUiState()
+      executeTurnCommand({
+        type: 'restartGame',
+        maxRounds: currentMaxRounds,
+        localRules: activeLocalRules,
+      })
+      return
+    }
+    if (multiplayer.mode === 'cpu') {
+      restartWithConfig({
+        ...game.config,
+        maxRounds: selectedRoundCount,
+        localRules: localRulesForPanel,
+      })
+      return
+    }
+    restartWithConfig(game.config)
+  }, [
+    activeLocalRules,
+    executeTurnCommand,
+    game.config,
+    isLobbyConnected,
+    localRulesForPanel,
+    multiplayer.mode,
+    resetTransientUiState,
+    restartWithConfig,
+    selectedRoundCount,
+  ])
+
+  const handleResetLocalRulesToDefaults = useCallback((): void => {
+    if (!canEditLocalRules) {
+      return
+    }
+
+    const defaultRoundCount = DEFAULT_ROUND_COUNT
+    const defaultRules = normalizeLocalRuleSettings(DEFAULT_LOCAL_RULE_SETTINGS)
+    resetLocalRuleSettings()
+    saveLocalRuleSettings(defaultRules)
+    savePreferredRoundCount(defaultRoundCount)
+    setDraftLocalRules(defaultRules)
+    setSelectedRoundCount(defaultRoundCount)
+
+    if (multiplayer.mode === 'cpu') {
+      if (hasMatchStarted) {
+        return
+      }
+      setGame((prev) => ({
+        ...prev,
+        config: {
+          ...prev.config,
+          maxRounds: defaultRoundCount,
+          localRules: defaultRules,
+        },
+      }))
+      return
+    }
+
+    if (!isMatchSurfaceVisible) {
+      applyLocalRuleChange(defaultRules)
+      return
+    }
+
+    resetTransientUiState()
+    executeTurnCommand({
+      type: 'restartGame',
+      maxRounds: defaultRoundCount,
+      localRules: defaultRules,
+    })
+  }, [
+    applyLocalRuleChange,
+    canEditLocalRules,
+    executeTurnCommand,
+    hasMatchStarted,
+    isMatchSurfaceVisible,
+    multiplayer.mode,
+    resetTransientUiState,
+  ])
+
+  const handleSelectRoundCount = useCallback((maxRounds: (typeof ROUND_COUNT_OPTIONS)[number]): void => {
+    if (!canSelectRoundCount) {
+      return
+    }
+    setSelectedRoundCount(maxRounds)
+    savePreferredRoundCount(maxRounds)
+    if (multiplayer.mode === 'cpu') {
+      if (hasMatchStarted) {
+        return
+      }
+      setGame((prev) => ({
+        ...prev,
+        config: { ...prev.config, maxRounds },
+      }))
+      return
+    }
+    if (!isMatchSurfaceVisible || !canSelectRoundCount || game.config.maxRounds === maxRounds) {
+      return
+    }
+    resetTransientUiState()
+    executeTurnCommand({ type: 'restartGame', maxRounds, localRules: activeLocalRules })
+  }, [
+    activeLocalRules,
+    canSelectRoundCount,
+    executeTurnCommand,
+    game.config,
+    hasMatchStarted,
+    isMatchSurfaceVisible,
+    multiplayer.mode,
+    resetTransientUiState,
+  ])
   const handleRequestNextRound = useCallback((): void => {
     setPendingHandPlaceholder(null)
     setPendingAiHandPlaceholder(null)
@@ -3522,120 +4176,118 @@ function App() {
 
   return (
     <main ref={appContainerRef} className={`app ${isChromeCollapsed ? 'chrome-collapsed' : ''}`} onPointerDown={handleAppPointerDown}>
-      <section className={`app-chrome ${isChromeCollapsed ? 'collapsed' : 'expanded'}`}>
-        <div className={`chrome-toggle-row ${!useMobileViewLayout ? 'desktop-controls' : ''}`}>
-          {isMobileLayout && !isLandscapeFullscreen ? (
+      {!isLocalRulePanelVisible ? (
+        <section className={`app-chrome ${isChromeCollapsed ? 'collapsed' : 'expanded'}`}>
+          <div className={`chrome-toggle-row ${!useMobileViewLayout ? 'desktop-controls' : ''}`}>
+            {isMobileLayout && !isLandscapeFullscreen ? (
+              <button
+                type="button"
+                className="fullscreen-button compact"
+                onClick={enterLandscapeFullscreen}
+              >
+                フルスクリーン
+              </button>
+            ) : null}
+            {isLandscapeFullscreen ? (
+              <button
+                type="button"
+                className="fullscreen-button active"
+                onClick={exitLandscapeFullscreen}
+              >
+                通常表示に戻す
+              </button>
+            ) : null}
             <button
               type="button"
-              className="fullscreen-button compact"
-              onClick={enterLandscapeFullscreen}
+              className="chrome-toggle-button"
+              onClick={() => {
+                setIsRuleHelpVisible(false)
+                setIsScoreTableVisible((current) => !current)
+              }}
             >
-              フルスクリーン
+              {isScoreTableVisible ? '点数表を閉じる' : '点数表'}
             </button>
-          ) : null}
-          {isLandscapeFullscreen ? (
             <button
               type="button"
-              className="fullscreen-button active"
-              onClick={exitLandscapeFullscreen}
+              className="chrome-toggle-button header-settings-toggle-button"
+              onClick={() => setIsChromeCollapsed((current) => !current)}
+              aria-expanded={!isChromeCollapsed}
             >
-              通常表示に戻す
+              {isChromeCollapsed ? 'ヘッダー/設定を開く' : 'ヘッダー/設定を閉じる'}
             </button>
-          ) : null}
-          <button
-            type="button"
-            className="chrome-toggle-button"
-            onClick={() => {
-              setIsRuleHelpVisible(false)
-              setIsScoreTableVisible((current) => !current)
-            }}
-          >
-            {isScoreTableVisible ? '点数表を閉じる' : '点数表'}
-          </button>
-          <button
-            type="button"
-            className="chrome-toggle-button header-settings-toggle-button"
-            onClick={() => setIsChromeCollapsed((current) => !current)}
-            aria-expanded={!isChromeCollapsed}
-          >
-            {isChromeCollapsed ? 'ヘッダー/設定を開く' : 'ヘッダー/設定を閉じる'}
-          </button>
-        </div>
+          </div>
 
-        {!isChromeCollapsed ? (
-          <div className="app-chrome-panel">
-            <header className="topbar">
-              <div>
+          {!isChromeCollapsed ? (
+            <div className="app-chrome-panel">
+              <header className="topbar">
                 <h1>花札 こいこい</h1>
-                <p>
-                  {selectedRoundCount === null && !isMatchSurfaceVisible && multiplayer.mode === 'cpu'
-                    ? '月数を選択して対戦を開始'
-                    : `第 ${game.round} / ${selectedRoundCount ?? game.config.maxRounds} 月`}
-                </p>
-              </div>
-              <div className="topbar-actions">
-                {game.phase !== 'roundEnd' && game.phase !== 'gameOver' && game.phase !== 'waiting' && game.phase !== 'dealing' ? (
-                  <span className={`turn-badge ${isLocalTurn ? 'your-turn' : 'opponent-turn'}`}>
-                    {isLocalTurn ? 'あなたの番' : `${opponentDisplayName}の番`}
-                  </span>
-                ) : null}
-                <span className="visually-hidden" aria-live="polite">{phaseMessage}</span>
-                <button type="button" onClick={handleRestart} disabled={isLobbyConnected}>
-                  最初から
+                <button
+                  type="button"
+                  className="lobby-local-rule-button"
+                  onClick={() => {
+                    setIsRuleHelpVisible(false)
+                    setIsScoreTableVisible(false)
+                    setIsLocalRulePanelVisible(true)
+                  }}
+                >
+                  ローカルルール
                 </button>
-              </div>
-            </header>
+              </header>
+              <span className="visually-hidden" aria-live="polite">{phaseMessage}</span>
 
-            <MultiplayerLobby
-              mode={multiplayer.mode}
-              connectionStatus={multiplayer.connectionStatus}
-              connectionLogs={multiplayer.connectionLogs}
-              roomId={multiplayer.roomId}
-              hostRoomId={multiplayer.hostRoomId}
-              onHostRoomIdChange={multiplayer.setHostRoomId}
-              joinRoomId={multiplayer.joinRoomId}
-              onJoinRoomIdChange={multiplayer.setJoinRoomId}
-              onSwitchToCpu={handleSwitchToCpu}
-              onStartHost={handleStartHost}
-              onJoinGuest={handleJoinGuest}
-              onReconnect={() => multiplayer.reconnect(gameRef.current)}
-              onLeave={handleLeaveMultiplayer}
-              roundCountOptions={ROUND_COUNT_OPTIONS}
-              selectedRoundCount={selectedRoundCount}
-              canSelectRoundCount={canSelectRoundCount}
-              onSelectRoundCount={handleSelectRoundCount}
-            />
-
-            {multiplayer.mode === 'cpu' ? (
-              <section className="difficulty-selector">
-                <h3>難易度</h3>
-                <div className="difficulty-buttons">
-                  {(['yowai', 'futsuu', 'tsuyoi', 'yabai', 'oni', 'kami'] as const).map((difficulty) => {
-                    const labels: Record<typeof difficulty, string> = {
-                      yowai: 'よわい',
-                      futsuu: 'ふつう',
-                      tsuyoi: 'つよい',
-                      yabai: 'やばい',
-                      oni: 'おに',
-                      kami: 'かみ',
-                    }
-                    return (
-                      <button
-                        key={difficulty}
-                        type="button"
-                        className={`difficulty-button ${game.config.aiDifficulty === difficulty ? 'active' : ''}`}
-                        onClick={() => handleChangeAiDifficulty(difficulty)}
-                      >
-                        {labels[difficulty]}
-                      </button>
-                    )
-                  })}
+              <section className="cpu-battle-section">
+                <div className="cpu-battle-controls">
+                  <button
+                    type="button"
+                    className="cpu-start-button"
+                    onClick={handleSwitchToCpu}
+                  >
+                    CPU対戦
+                  </button>
+                  <div className="difficulty-selector">
+                    <div className="difficulty-buttons">
+                      {(['yowai', 'futsuu', 'tsuyoi', 'yabai', 'oni', 'kami'] as const).map((difficulty) => (
+                        <button
+                          key={difficulty}
+                          type="button"
+                          className={`difficulty-button ${game.config.aiDifficulty === difficulty ? 'active' : ''}`}
+                          onClick={() => handleChangeAiDifficulty(difficulty)}
+                        >
+                          {AI_DIFFICULTY_LABELS[difficulty]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </section>
-            ) : null}
-          </div>
-        ) : null}
-      </section>
+
+              <MultiplayerLobby
+                mode={multiplayer.mode}
+                connectionStatus={multiplayer.connectionStatus}
+                connectionLogs={multiplayer.connectionLogs}
+                roomId={multiplayer.roomId}
+                hostRoomId={multiplayer.hostRoomId}
+                onHostRoomIdChange={multiplayer.setHostRoomId}
+                joinRoomId={multiplayer.joinRoomId}
+                onJoinRoomIdChange={multiplayer.setJoinRoomId}
+                onStartHost={handleStartHost}
+                onJoinGuest={handleJoinGuest}
+                onReconnect={() => multiplayer.reconnect(gameRef.current)}
+                onLeave={handleLeaveMultiplayer}
+              />
+              <p className="app-chrome-credit">
+                {CARD_ART_CREDIT_TEXT}
+                {' '}
+                <a href={CARD_ART_SOURCE_URL} target="_blank" rel="noreferrer">出典</a>
+                {' | '}
+                <a href={CARD_ART_LICENSE_URL} target="_blank" rel="noreferrer">{CARD_ART_LICENSE_TEXT}</a>
+                {' | '}
+                {CARD_ART_MODIFICATION_TEXT}
+              </p>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       <button
         type="button"
@@ -3658,6 +4310,13 @@ function App() {
               captured={aiPanelView.captured}
               yaku={aiPanelView.completedYaku}
               blockedCardIds={aiBlockedCardIds}
+              ruleOptions={{
+                enableHanamiZake: activeLocalRules.yakuEnabled['hanami-zake'],
+                enableTsukimiZake: activeLocalRules.yakuEnabled['tsukimi-zake'],
+                enableFourCardsYaku: activeLocalRules.yakuEnabled.shiten,
+                enableAmeNagare: activeLocalRules.yakuEnabled['hanami-zake'] && activeLocalRules.enableAmeNagare,
+                enableKiriNagare: activeLocalRules.yakuEnabled['tsukimi-zake'] && activeLocalRules.enableKiriNagare,
+              }}
               active={game.currentPlayerIndex === opponentPlayerIndex}
               side="left"
             />
@@ -3940,6 +4599,13 @@ function App() {
               captured={humanPanelView.captured}
               yaku={humanPanelView.completedYaku}
               blockedCardIds={humanBlockedCardIds}
+              ruleOptions={{
+                enableHanamiZake: activeLocalRules.yakuEnabled['hanami-zake'],
+                enableTsukimiZake: activeLocalRules.yakuEnabled['tsukimi-zake'],
+                enableFourCardsYaku: activeLocalRules.yakuEnabled.shiten,
+                enableAmeNagare: activeLocalRules.yakuEnabled['hanami-zake'] && activeLocalRules.enableAmeNagare,
+                enableKiriNagare: activeLocalRules.yakuEnabled['tsukimi-zake'] && activeLocalRules.enableKiriNagare,
+              }}
               active={game.currentPlayerIndex === localPlayerIndex}
               side="right"
             />
@@ -3973,6 +4639,35 @@ function App() {
           </section>
         </section>
       ) : null}
+
+      <LocalRulePanel
+        isOpen={isLocalRulePanelVisible}
+        canEdit={canEditLocalRules}
+        isDeferredApply={isCpuRuleChangeDeferred}
+        roundCountOptions={ROUND_COUNT_OPTIONS}
+        selectedRoundCount={selectedRoundCount}
+        localRules={localRulesForPanel}
+        yakuFields={LOCAL_RULE_YAKU_FIELDS}
+        onClose={() => setIsLocalRulePanelVisible(false)}
+        onResetToDefaults={handleResetLocalRulesToDefaults}
+        onSelectRoundCount={handleSelectRoundCount}
+        onChangeYakuEnabled={handleChangeYakuEnabled}
+        onChangeYakuPoint={handleChangeYakuPoint}
+        onChangeKoiKoiBonusMode={handleChangeKoiKoiBonusMode}
+        onToggleKoiKoiShowdown={handleToggleKoiKoiShowdown}
+        onChangeSelfKoiBonusFactor={handleChangeSelfKoiBonusFactor}
+        onChangeOpponentKoiBonusFactor={handleChangeOpponentKoiBonusFactor}
+        onChangeNoYakuPolicy={handleChangeNoYakuPolicy}
+        onChangeNoYakuParentPoints={handleChangeNoYakuParentPoints}
+        onChangeNoYakuChildPoints={handleChangeNoYakuChildPoints}
+        onToggleAmeNagare={handleToggleAmeNagare}
+        onToggleKiriNagare={handleToggleKiriNagare}
+        onChangeKoikoiLimit={handleChangeKoikoiLimit}
+        onChangeDealerRotationMode={handleChangeDealerRotationMode}
+        onToggleDrawOvertime={handleToggleDrawOvertime}
+        onChangeDrawOvertimeMode={handleChangeDrawOvertimeMode}
+        onChangeDrawOvertimeRounds={handleChangeDrawOvertimeRounds}
+      />
 
       {isRuleHelpVisible && currentRuleHelpPage ? (
         <section className="rule-help-overlay" role="presentation" onClick={closeRuleHelp}>
@@ -4163,8 +4858,12 @@ function App() {
           messageLines={koikoiDecisionYakuLines}
           primaryActionLabel="ここで上がる"
           onPrimaryAction={() => executeTurnCommand({ type: 'resolveKoiKoi', decision: 'stop' })}
-          secondaryActionLabel="こいこいする"
-          onSecondaryAction={() => executeTurnCommand({ type: 'resolveKoiKoi', decision: 'koikoi' })}
+          secondaryActionLabel={canDeclareKoiKoiNow ? 'こいこいする' : undefined}
+          onSecondaryAction={
+            canDeclareKoiKoiNow
+              ? () => executeTurnCommand({ type: 'resolveKoiKoi', decision: 'koikoi' })
+              : undefined
+          }
         />
       ) : null}
 

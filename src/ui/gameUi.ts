@@ -1,5 +1,5 @@
 import type { KoiKoiGameState } from '../engine/game'
-import { getCardsByType } from '../engine/cards'
+import { HANAFUDA_CARDS, getCardsByType } from '../engine/cards'
 import type { HanafudaCard, Yaku } from '../engine/types'
 
 export const AI_PLAYER_INDEX = 1
@@ -23,6 +23,18 @@ const NON_RAIN_HIKARI_IDS = ['jan-hikari', 'mar-hikari', 'aug-hikari', 'dec-hika
 const TANE_CARD_IDS = getCardsByType('tane').map((card) => card.id)
 const TANZAKU_CARD_IDS = getCardsByType('tanzaku').map((card) => card.id)
 const KASU_CARD_IDS = getCardsByType('kasu').map((card) => card.id)
+const MONTH_CARD_ID_GROUPS: readonly (readonly string[])[] = (() => {
+  const byMonth = new Map<number, string[]>()
+  for (const card of HANAFUDA_CARDS) {
+    const monthCardIds = byMonth.get(card.month)
+    if (monthCardIds) {
+      monthCardIds.push(card.id)
+      continue
+    }
+    byMonth.set(card.month, [card.id])
+  }
+  return [...byMonth.values()]
+})()
 const EMPTY_BLOCKED_CARD_IDS: ReadonlySet<string> = new Set()
 
 export function getTurnIntent(phase: KoiKoiGameState['phase']): TurnIntent {
@@ -76,11 +88,38 @@ function canReachByIds(
   return countPotentialMatches(ids, capturedIds, blockedCardIds) >= target
 }
 
+function getBestFourCardsMonthProgress(captured: readonly HanafudaCard[]): readonly HanafudaCard[] {
+  const byMonth = new Map<number, HanafudaCard[]>()
+  for (const card of captured) {
+    const monthCards = byMonth.get(card.month)
+    if (monthCards) {
+      monthCards.push(card)
+      continue
+    }
+    byMonth.set(card.month, [card])
+  }
+
+  let bestMonth = Number.POSITIVE_INFINITY
+  let bestCards: readonly HanafudaCard[] = []
+  for (const [month, monthCards] of byMonth.entries()) {
+    if (monthCards.length > bestCards.length || (monthCards.length === bestCards.length && month < bestMonth)) {
+      bestMonth = month
+      bestCards = monthCards
+    }
+  }
+  return bestCards
+}
+
+function canReachFourCardsYaku(capturedIds: ReadonlySet<string>, blockedCardIds: ReadonlySet<string>): boolean {
+  return MONTH_CARD_ID_GROUPS.some((ids) => canReachByIds(ids, 4, capturedIds, blockedCardIds))
+}
+
 export type YakuProgressKey =
   | 'goko'
   | 'shiko'
   | 'ame-shiko'
   | 'sanko'
+  | 'shiten'
   | 'hanami-zake'
   | 'tsukimi-zake'
   | 'inoshikacho'
@@ -111,17 +150,34 @@ export interface VisibleYakuProgressState extends YakuProgressState {
   readonly subEntries?: readonly VisibleYakuSubProgressState[]
 }
 
+export interface YakuProgressRuleOptions {
+  readonly enableHanamiZake?: boolean
+  readonly enableTsukimiZake?: boolean
+  readonly enableFourCardsYaku?: boolean
+  readonly enableAmeNagare?: boolean
+  readonly enableKiriNagare?: boolean
+}
+
 export function buildYakuProgressEntries(
   captured: readonly HanafudaCard[],
   yaku: readonly Yaku[],
   blockedCardIds: ReadonlySet<string> = EMPTY_BLOCKED_CARD_IDS,
+  ruleOptions: YakuProgressRuleOptions = {},
 ): readonly YakuProgressState[] {
+  const enableHanamiZake = ruleOptions.enableHanamiZake ?? true
+  const enableTsukimiZake = ruleOptions.enableTsukimiZake ?? true
+  const enableFourCardsYaku = ruleOptions.enableFourCardsYaku ?? false
+  const enableAmeNagare = ruleOptions.enableAmeNagare ?? false
+  const enableKiriNagare = ruleOptions.enableKiriNagare ?? false
   const completedTypes = new Set(yaku.map((item) => item.type))
   const capturedIds = new Set(captured.map((card) => card.id))
+  const hanamiBlockedByAme = enableHanamiZake && enableAmeNagare && capturedIds.has('nov-hikari')
+  const tsukimiBlockedByKiri = enableTsukimiZake && enableKiriNagare && captured.some((card) => card.month === 12)
   const hasRainMan = capturedIds.has('nov-hikari')
   const gokoDone = completedTypes.has('goko')
   const shikoDone = completedTypes.has('shiko') || gokoDone
   const ameShikoDone = completedTypes.has('ame-shiko') || (gokoDone && hasRainMan)
+  const shitenDone = enableFourCardsYaku && completedTypes.has('shiten')
   const sankoDone =
     completedTypes.has('sanko') ||
     shikoDone ||
@@ -147,6 +203,8 @@ export function buildYakuProgressEntries(
   const gokoProgressCards = showUpperLightProgress ? hikariCards : []
   const shikoProgressCards = showUpperLightProgress ? hikariCards : []
   const ameShikoProgressCount = hikariCards.length
+  const shitenProgressCards = getBestFourCardsMonthProgress(captured)
+  const shitenProgressCount = shitenProgressCards.length
   const akatanCount = countMatched(capturedIds, AKATAN_IDS)
   const aotanCount = countMatched(capturedIds, AOTAN_IDS)
   const hanamiCount = countMatched(capturedIds, HANAMI_IDS)
@@ -158,8 +216,9 @@ export function buildYakuProgressEntries(
     (capturedIds.has('nov-hikari') || !blockedCardIds.has('nov-hikari')) &&
     canReachByIds(HIKARI_IDS, 4, capturedIds, blockedCardIds)
   const canReachSanko = canReachByIds(NON_RAIN_HIKARI_IDS, 3, capturedIds, blockedCardIds)
-  const canReachHanami = canReachByIds(HANAMI_IDS, 2, capturedIds, blockedCardIds)
-  const canReachTsukimi = canReachByIds(TSUKIMI_IDS, 2, capturedIds, blockedCardIds)
+  const canReachShiten = enableFourCardsYaku && canReachFourCardsYaku(capturedIds, blockedCardIds)
+  const canReachHanami = enableHanamiZake && !hanamiBlockedByAme && canReachByIds(HANAMI_IDS, 2, capturedIds, blockedCardIds)
+  const canReachTsukimi = enableTsukimiZake && !tsukimiBlockedByKiri && canReachByIds(TSUKIMI_IDS, 2, capturedIds, blockedCardIds)
   const canReachInoshikacho = canReachByIds(INOSHIKACHO_IDS, 3, capturedIds, blockedCardIds)
   const canReachTane = canReachByIds(TANE_CARD_IDS, 5, capturedIds, blockedCardIds)
   const canReachAkatan = canReachByIds(AKATAN_IDS, 3, capturedIds, blockedCardIds)
@@ -171,8 +230,9 @@ export function buildYakuProgressEntries(
   const showShiko = shikoDone || canReachShiko
   const showAmeShiko = ameShikoDone || canReachAmeShiko
   const showSanko = sankoDone || canReachSanko
-  const showHanami = completedTypes.has('hanami-zake') || canReachHanami
-  const showTsukimi = completedTypes.has('tsukimi-zake') || canReachTsukimi
+  const showShiten = enableFourCardsYaku && (shitenDone || canReachShiten)
+  const showHanami = enableHanamiZake && !hanamiBlockedByAme && (completedTypes.has('hanami-zake') || canReachHanami)
+  const showTsukimi = enableTsukimiZake && !tsukimiBlockedByKiri && (completedTypes.has('tsukimi-zake') || canReachTsukimi)
   const showInoshikacho = completedTypes.has('inoshikacho') || canReachInoshikacho
   const showTane = completedTypes.has('tane') || canReachTane
   const showAkatan = completedTypes.has('akatan') || canReachAkatan
@@ -214,12 +274,20 @@ export function buildYakuProgressEntries(
       done: sankoDone,
     },
     {
+      key: 'shiten',
+      label: '四点役',
+      current: showShiten ? shitenProgressCount : 0,
+      target: 4,
+      cards: showShiten ? shitenProgressCards : [],
+      done: shitenDone,
+    },
+    {
       key: 'hanami-zake',
       label: '花見で一杯',
       current: showHanami ? hanamiCount : 0,
       target: 2,
       cards: showHanami ? hanamiCards : [],
-      done: completedTypes.has('hanami-zake'),
+      done: enableHanamiZake && !hanamiBlockedByAme && completedTypes.has('hanami-zake'),
     },
     {
       key: 'tsukimi-zake',
@@ -227,7 +295,7 @@ export function buildYakuProgressEntries(
       current: showTsukimi ? tsukimiCount : 0,
       target: 2,
       cards: showTsukimi ? tsukimiCards : [],
-      done: completedTypes.has('tsukimi-zake'),
+      done: enableTsukimiZake && !tsukimiBlockedByKiri && completedTypes.has('tsukimi-zake'),
     },
     {
       key: 'inoshikacho',

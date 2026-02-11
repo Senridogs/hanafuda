@@ -103,4 +103,47 @@ describe('buildYakuProgressEntries', () => {
     expect(tane?.cards).toEqual([])
     expect(tane?.done).toBe(false)
   })
+
+  it('does not display 花見/月見 progress when disabled by local rule options', () => {
+    const captured = cardsById(['mar-hikari', 'aug-hikari', 'sep-tane'])
+    const yaku = calculateYaku(captured)
+    const entries = buildYakuProgressEntries(
+      captured,
+      yaku,
+      new Set<string>(),
+      { enableHanamiZake: false, enableTsukimiZake: false },
+    )
+    const entryMap = toEntryMap(entries)
+
+    expect(entryMap.get('hanami-zake')?.current).toBe(0)
+    expect(entryMap.get('hanami-zake')?.cards).toEqual([])
+    expect(entryMap.get('hanami-zake')?.done).toBe(false)
+    expect(entryMap.get('tsukimi-zake')?.current).toBe(0)
+    expect(entryMap.get('tsukimi-zake')?.cards).toEqual([])
+    expect(entryMap.get('tsukimi-zake')?.done).toBe(false)
+  })
+
+  it('does not display 花見/月見 progress when blocked by 雨流れ/霧流れ', () => {
+    const rainCaptured = cardsById(['mar-hikari', 'aug-hikari', 'sep-tane', 'nov-hikari'])
+    const rainEntries = buildYakuProgressEntries(
+      rainCaptured,
+      calculateYaku(rainCaptured),
+      new Set<string>(),
+      { enableAmeNagare: true, enableKiriNagare: false },
+    )
+    const rainMap = toEntryMap(rainEntries)
+    expect(rainMap.get('hanami-zake')?.current).toBe(0)
+    expect(rainMap.get('tsukimi-zake')?.current).toBe(0)
+
+    const fogCaptured = cardsById(['mar-hikari', 'aug-hikari', 'sep-tane', 'dec-kasu-1'])
+    const fogEntries = buildYakuProgressEntries(
+      fogCaptured,
+      calculateYaku(fogCaptured),
+      new Set<string>(),
+      { enableAmeNagare: false, enableKiriNagare: true },
+    )
+    const fogMap = toEntryMap(fogEntries)
+    expect(fogMap.get('hanami-zake')?.current).toBe(0)
+    expect(fogMap.get('tsukimi-zake')?.current).toBe(0)
+  })
 })

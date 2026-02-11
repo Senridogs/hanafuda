@@ -1,4 +1,5 @@
 import type { KoiKoiGameState } from '../engine/game'
+import { normalizeLocalRuleSettings, type LocalRuleSettings, type LocalRuleSettingsInput } from '../engine/types'
 
 export type CheckpointRole = 'host' | 'guest'
 
@@ -13,6 +14,14 @@ export const CHECKPOINT_KEY_PREFIX = 'hanafuda:p2p:checkpoint'
 export const CHECKPOINT_TTL_MS = 24 * 60 * 60 * 1000
 const CPU_CHECKPOINT_KEY = 'hanafuda:cpu:checkpoint'
 export const CPU_CHECKPOINT_TTL_MS = CHECKPOINT_TTL_MS
+export const LOCAL_RULE_SETTINGS_STORAGE_VERSION = 1
+export const LOCAL_RULE_SETTINGS_KEY_PREFIX = 'hanafuda:local-rules'
+export const LOCAL_RULE_SETTINGS_KEY = `${LOCAL_RULE_SETTINGS_KEY_PREFIX}:v${LOCAL_RULE_SETTINGS_STORAGE_VERSION}`
+const LEGACY_LOCAL_RULE_SETTINGS_KEY = LOCAL_RULE_SETTINGS_KEY_PREFIX
+export const PREFERRED_ROUND_COUNT_STORAGE_VERSION = 1
+export const PREFERRED_ROUND_COUNT_KEY_PREFIX = 'hanafuda:round-count'
+export const PREFERRED_ROUND_COUNT_KEY = `${PREFERRED_ROUND_COUNT_KEY_PREFIX}:v${PREFERRED_ROUND_COUNT_STORAGE_VERSION}`
+const LEGACY_PREFERRED_ROUND_COUNT_KEY = 'hanafuda:max-rounds'
 
 export interface CpuCheckpointPayload {
   readonly state: KoiKoiGameState
@@ -102,6 +111,306 @@ function parseCpuCheckpointPayload(value: unknown): CpuCheckpointPayload | null 
     updatedAt,
     isMatchSurfaceVisible,
   }
+}
+
+const LOCAL_RULE_TOP_LEVEL_KEYS = [
+  'yakuPoints',
+  'yakuEnabled',
+  'koiKoiBonusMode',
+  'enableKoiKoiShowdown',
+  'selfKoiBonusFactor',
+  'opponentKoiBonusFactor',
+  'enableHanamiZake',
+  'enableTsukimiZake',
+  'noYakuPolicy',
+  'noYakuParentPoints',
+  'noYakuChildPoints',
+  'enableFourCardsYaku',
+  'enableAmeNagare',
+  'enableKiriNagare',
+  'koikoiLimit',
+  'dealerRotationMode',
+  'enableDrawOvertime',
+  'drawOvertimeMode',
+  'drawOvertimeRounds',
+] as const
+
+const LOCAL_RULE_YAKU_POINT_KEYS = [
+  'goko',
+  'shiko',
+  'ame-shiko',
+  'sanko',
+  'shiten',
+  'inoshikacho',
+  'hanami-zake',
+  'tsukimi-zake',
+  'akatan',
+  'aotan',
+  'tane',
+  'tanzaku',
+  'kasu',
+] as const
+
+const LOCAL_RULE_YAKU_ENABLED_KEYS = [
+  'goko',
+  'shiko',
+  'ame-shiko',
+  'sanko',
+  'shiten',
+  'inoshikacho',
+  'hanami-zake',
+  'tsukimi-zake',
+  'akatan',
+  'aotan',
+  'tane',
+  'tanzaku',
+  'kasu',
+] as const
+
+interface LocalRuleSettingsStoragePayload {
+  readonly version: number
+  readonly updatedAt: number
+  readonly localRules: LocalRuleSettings
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return isRecord(value) && !Array.isArray(value)
+}
+
+function hasAnyLocalRuleKey(value: Record<string, unknown>): boolean {
+  return LOCAL_RULE_TOP_LEVEL_KEYS.some((key) => key in value)
+}
+
+function extractLocalRuleSettingsInput(value: unknown): LocalRuleSettingsInput | null {
+  if (!isPlainRecord(value)) {
+    return null
+  }
+
+  if (hasAnyLocalRuleKey(value)) {
+    return value as LocalRuleSettingsInput
+  }
+
+  const nested = value.localRules
+  if (!isPlainRecord(nested)) {
+    return null
+  }
+  if (!hasAnyLocalRuleKey(nested)) {
+    return null
+  }
+  return nested as LocalRuleSettingsInput
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+export type PreferredRoundCount = 3 | 6 | 12
+
+function isPreferredRoundCount(value: unknown): value is PreferredRoundCount {
+  return value === 3 || value === 6 || value === 12
+}
+
+function hasCompleteYakuPointTable(value: unknown): boolean {
+  if (!isPlainRecord(value)) {
+    return false
+  }
+  return LOCAL_RULE_YAKU_POINT_KEYS.every((key) => isFiniteNumber(value[key]))
+}
+
+function hasCompleteYakuEnabledTable(value: unknown): boolean {
+  if (!isPlainRecord(value)) {
+    return false
+  }
+  return LOCAL_RULE_YAKU_ENABLED_KEYS.every((key) => typeof value[key] === 'boolean')
+}
+
+function hasCompleteLocalRuleSettings(value: unknown): boolean {
+  if (!isPlainRecord(value)) {
+    return false
+  }
+  return (
+    hasCompleteYakuPointTable(value.yakuPoints)
+    && hasCompleteYakuEnabledTable(value.yakuEnabled)
+    && typeof value.koiKoiBonusMode === 'string'
+    && typeof value.enableKoiKoiShowdown === 'boolean'
+    && isFiniteNumber(value.selfKoiBonusFactor)
+    && isFiniteNumber(value.opponentKoiBonusFactor)
+    && typeof value.enableHanamiZake === 'boolean'
+    && typeof value.enableTsukimiZake === 'boolean'
+    && typeof value.noYakuPolicy === 'string'
+    && isFiniteNumber(value.noYakuParentPoints)
+    && isFiniteNumber(value.noYakuChildPoints)
+    && typeof value.enableFourCardsYaku === 'boolean'
+    && typeof value.enableAmeNagare === 'boolean'
+    && typeof value.enableKiriNagare === 'boolean'
+    && isFiniteNumber(value.koikoiLimit)
+    && typeof value.dealerRotationMode === 'string'
+    && typeof value.enableDrawOvertime === 'boolean'
+    && typeof value.drawOvertimeMode === 'string'
+    && isFiniteNumber(value.drawOvertimeRounds)
+  )
+}
+
+export function saveLocalRuleSettings(settings: LocalRuleSettingsInput): void {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return
+  }
+
+  const payload: LocalRuleSettingsStoragePayload = {
+    version: LOCAL_RULE_SETTINGS_STORAGE_VERSION,
+    updatedAt: Date.now(),
+    localRules: normalizeLocalRuleSettings(settings),
+  }
+
+  try {
+    storage.setItem(LOCAL_RULE_SETTINGS_KEY, JSON.stringify(payload))
+  } catch {
+    // Ignore unavailable storage / quota errors.
+  }
+}
+
+export function loadLocalRuleSettings(): LocalRuleSettings | null {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return null
+  }
+
+  const candidateKeys = [LOCAL_RULE_SETTINGS_KEY, LEGACY_LOCAL_RULE_SETTINGS_KEY]
+  for (const key of candidateKeys) {
+    const raw = storage.getItem(key)
+    if (raw === null) {
+      continue
+    }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      continue
+    }
+
+    const settingsInput = extractLocalRuleSettingsInput(parsed)
+    if (!settingsInput) {
+      continue
+    }
+
+    const normalized = normalizeLocalRuleSettings(settingsInput)
+    const normalizedSource = isPlainRecord(parsed) && isPlainRecord(parsed.localRules)
+      ? parsed.localRules
+      : settingsInput
+    const shouldRewrite = key !== LOCAL_RULE_SETTINGS_KEY || !hasCompleteLocalRuleSettings(normalizedSource)
+    if (shouldRewrite) {
+      saveLocalRuleSettings(normalized)
+      if (key !== LOCAL_RULE_SETTINGS_KEY) {
+        try {
+          storage.removeItem(key)
+        } catch {
+          // ignore unavailable storage errors.
+        }
+      }
+    }
+
+    return normalized
+  }
+
+  return null
+}
+
+export function resetLocalRuleSettings(): void {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return
+  }
+
+  try {
+    storage.removeItem(LOCAL_RULE_SETTINGS_KEY)
+    storage.removeItem(LEGACY_LOCAL_RULE_SETTINGS_KEY)
+  } catch {
+    // Ignore unavailable storage errors.
+  }
+}
+
+export function savePreferredRoundCount(roundCount: PreferredRoundCount): void {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return
+  }
+
+  try {
+    storage.setItem(PREFERRED_ROUND_COUNT_KEY, JSON.stringify({
+      version: PREFERRED_ROUND_COUNT_STORAGE_VERSION,
+      updatedAt: Date.now(),
+      roundCount,
+    }))
+  } catch {
+    // Ignore unavailable storage / quota errors.
+  }
+}
+
+export function loadPreferredRoundCount(): PreferredRoundCount | null {
+  const storage = getLocalStorage()
+  if (!storage) {
+    return null
+  }
+
+  const candidateKeys = [PREFERRED_ROUND_COUNT_KEY, LEGACY_PREFERRED_ROUND_COUNT_KEY]
+  for (const key of candidateKeys) {
+    const raw = storage.getItem(key)
+    if (raw === null) {
+      continue
+    }
+
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      const numeric = Number.parseInt(raw, 10)
+      if (isPreferredRoundCount(numeric)) {
+        savePreferredRoundCount(numeric)
+        if (key !== PREFERRED_ROUND_COUNT_KEY) {
+          try {
+            storage.removeItem(key)
+          } catch {
+            // ignore unavailable storage errors.
+          }
+        }
+        return numeric
+      }
+      continue
+    }
+
+    if (isPreferredRoundCount(parsed)) {
+      savePreferredRoundCount(parsed)
+      if (key !== PREFERRED_ROUND_COUNT_KEY) {
+        try {
+          storage.removeItem(key)
+        } catch {
+          // ignore unavailable storage errors.
+        }
+      }
+      return parsed
+    }
+
+    if (!isPlainRecord(parsed)) {
+      continue
+    }
+    const roundCount = parsed.roundCount
+    if (!isPreferredRoundCount(roundCount)) {
+      continue
+    }
+    if (key !== PREFERRED_ROUND_COUNT_KEY) {
+      savePreferredRoundCount(roundCount)
+      try {
+        storage.removeItem(key)
+      } catch {
+        // ignore unavailable storage errors.
+      }
+    }
+    return roundCount
+  }
+
+  return null
 }
 
 export function saveCheckpoint(roomId: string, payload: CheckpointPayload): void {

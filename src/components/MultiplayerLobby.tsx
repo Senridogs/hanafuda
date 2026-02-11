@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import type { MultiplayerMode } from '../hooks/useMultiplayerGame'
 
-type RoundCountOption = 3 | 6 | 12
-
 interface MultiplayerLobbyProps {
   readonly mode: MultiplayerMode
   readonly connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error'
@@ -12,15 +10,10 @@ interface MultiplayerLobbyProps {
   readonly onHostRoomIdChange: (value: string) => void
   readonly joinRoomId: string
   readonly onJoinRoomIdChange: (value: string) => void
-  readonly onSwitchToCpu: () => void
   readonly onStartHost: () => void
   readonly onJoinGuest: () => void
   readonly onReconnect: () => void
   readonly onLeave: () => void
-  readonly roundCountOptions: readonly RoundCountOption[]
-  readonly selectedRoundCount: RoundCountOption | null
-  readonly canSelectRoundCount: boolean
-  readonly onSelectRoundCount: (value: RoundCountOption) => void
   readonly showCopyButton?: boolean
 }
 
@@ -78,15 +71,10 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
     onHostRoomIdChange,
     joinRoomId,
     onJoinRoomIdChange,
-    onSwitchToCpu,
     onStartHost,
     onJoinGuest,
     onReconnect,
     onLeave,
-    roundCountOptions,
-    selectedRoundCount,
-    canSelectRoundCount,
-    onSelectRoundCount,
     showCopyButton = true,
   } = props
 
@@ -95,9 +83,7 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
   const isHostMode = mode === 'p2p-host'
   const isConnectedSession = isMultiplayer && connectionStatus === 'connected'
   const isHostWaitingForGuest = isHostMode && connectionStatus !== 'connected'
-  const showRoundSelectionWarning = mode === 'cpu' && selectedRoundCount === null
-  const disableCpuStartButton = isMultiplayer || selectedRoundCount === null
-  const disableHostCreateButton = isMultiplayer || selectedRoundCount === null
+  const disableHostCreateButton = isMultiplayer
   const disableJoinControls = isMultiplayer || isHostMode
   const canCopyRoomId = isHostWaitingForGuest && roomId.length > 0
   const [copiedRoomId, setCopiedRoomId] = useState<string | null>(null)
@@ -132,41 +118,7 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
 
   return (
     <section className="multiplayer-lobby" aria-label="通信対戦">
-      <div className="lobby-row">
-        <button
-          type="button"
-          className={mode === 'cpu' ? 'primary' : ''}
-          onClick={onSwitchToCpu}
-          disabled={disableCpuStartButton}
-        >
-          CPU対戦
-        </button>
-      </div>
-
-      <div className={`lobby-round-selector ${showRoundSelectionWarning ? 'required' : ''}`}>
-        <div className="lobby-round-selector-head">
-          <span>月数</span>
-          <span className={`lobby-round-selector-state ${selectedRoundCount === null ? 'unselected' : ''}`}>
-            {selectedRoundCount === null ? '未選択' : `${selectedRoundCount}月`}
-          </span>
-        </div>
-        <div className="round-count-selector" aria-label="月数選択" aria-invalid={showRoundSelectionWarning}>
-          {roundCountOptions.map((roundCount) => (
-            <button
-              key={roundCount}
-              type="button"
-              className={`round-count-button ${selectedRoundCount === roundCount ? 'active' : ''}`}
-              onClick={() => onSelectRoundCount(roundCount)}
-              disabled={!canSelectRoundCount}
-            >
-              {roundCount}月
-            </button>
-          ))}
-        </div>
-        <p className={`lobby-round-selector-note ${showRoundSelectionWarning ? 'warning' : ''}`}>
-          {showRoundSelectionWarning ? '月数を選ぶまで対戦を開始できません。' : '対戦前に月数を選択してください。'}
-        </p>
-      </div>
+      <h3 className="multiplayer-lobby-title">通信対戦</h3>
 
       {isCpuMode ? (
         <div className="lobby-section">
@@ -183,7 +135,6 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
             />
             <button
               type="button"
-              className=""
               onClick={onStartHost}
               disabled={disableHostCreateButton}
             >
