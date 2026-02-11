@@ -11,6 +11,7 @@ import {
   startNextRound,
   type KoiKoiGameState,
 } from '../engine/game'
+import { normalizeLocalRuleSettings } from '../engine/types'
 import type {
   ActionMessage,
   ErrorMessage,
@@ -78,6 +79,28 @@ function assertNever(value: never): never {
   throw new Error(`Unhandled turn command: ${JSON.stringify(value)}`)
 }
 
+function mergeRestartLocalRules(
+  state: KoiKoiGameState,
+  command: Extract<TurnCommand, { type: 'restartGame' }>,
+) {
+  if (!command.localRules) {
+    return undefined
+  }
+
+  return normalizeLocalRuleSettings({
+    ...state.config.localRules,
+    ...command.localRules,
+    yakuPoints: {
+      ...state.config.localRules.yakuPoints,
+      ...(command.localRules.yakuPoints ?? {}),
+    },
+    yakuEnabled: {
+      ...state.config.localRules.yakuEnabled,
+      ...(command.localRules.yakuEnabled ?? {}),
+    },
+  })
+}
+
 export function applyTurnCommand(state: KoiKoiGameState, command: TurnCommand): KoiKoiGameState {
   switch (command.type) {
     case 'playHandCard':
@@ -100,11 +123,14 @@ export function applyTurnCommand(state: KoiKoiGameState, command: TurnCommand): 
       return startNextRound(state, command.seed)
     case 'readyNextRound':
       return state
-    case 'restartGame':
+    case 'restartGame': {
+      const mergedLocalRules = mergeRestartLocalRules(state, command)
       return createNewGame({
         ...state.config,
         maxRounds: command.maxRounds,
+        ...(mergedLocalRules ? { localRules: mergedLocalRules } : {}),
       }, command.seed)
+    }
     default:
       return assertNever(command)
   }

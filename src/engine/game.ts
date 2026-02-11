@@ -1,5 +1,5 @@
 import { createDeck, createSeededRandom, dealCards, drawCard, shuffleDeck } from './deck'
-import { DEFAULT_CONFIG, type GameConfig, type GameState, type HanafudaCard, type Player, type TurnAction, type Yaku } from './types'
+import { DEFAULT_CONFIG, normalizeGameConfig, type GameConfig, type GameState, type HanafudaCard, type Player, type TurnAction, type Yaku } from './types'
 import { calculateYaku, getYakuTotalPoints } from './yaku'
 
 type PlayerTuple = readonly [Player, Player]
@@ -249,14 +249,15 @@ function resolveCpuAssistProfileForRound(
   humanScore: number,
   cpuScore: number,
 ): CpuAssistProfile | null {
-  const baseProfile = getCpuAssistProfile(config)
+  const normalizedConfig = normalizeGameConfig(config)
+  const baseProfile = getCpuAssistProfile(normalizedConfig)
   if (!baseProfile) {
     return null
   }
   const mood = resolveDifficultyRoundMood(
-    config.aiDifficulty,
+    normalizedConfig.aiDifficulty,
     round,
-    config.maxRounds,
+    normalizedConfig.maxRounds,
     cpuScore,
     humanScore,
   )
@@ -389,8 +390,9 @@ function dealRound(
   prevRoundScoreHistory: readonly RoundScoreEntry[] = [],
   random: () => number = Math.random,
 ): KoiKoiGameState {
+  const normalizedConfig = normalizeGameConfig(config)
   const assistProfile = resolveCpuAssistProfileForRound(
-    config,
+    normalizedConfig,
     round,
     players[0].score,
     players[1].score,
@@ -443,7 +445,7 @@ function dealRound(
     newYaku: [],
     winner: null,
     turnHistory: [],
-    config,
+    config: normalizedConfig,
     pendingMatches: [],
     pendingSource: null,
     roundWinner: null,
@@ -465,6 +467,75 @@ function determineGameWinner(players: PlayerTuple): Player['id'] | null {
   return players[0].score > players[1].score ? 'player1' : 'player2'
 }
 
+function getRoundScoreHistory(state: { readonly roundScoreHistory?: unknown }): readonly RoundScoreEntry[] {
+  return Array.isArray(state.roundScoreHistory)
+    ? (state.roundScoreHistory as readonly RoundScoreEntry[])
+    : []
+}
+
+function hasReachedFinalRound(state: KoiKoiGameState, playersAfterRound: PlayerTuple): boolean {
+  const normalizedConfig = normalizeGameConfig(state.config)
+  if (state.round < normalizedConfig.maxRounds) {
+    return false
+  }
+
+  const localRules = normalizedConfig.localRules
+  const isTie = playersAfterRound[0].score === playersAfterRound[1].score
+
+  if (localRules.enableDrawOvertime) {
+    if (localRules.drawOvertimeMode === 'until-decision') {
+      return !isTie
+    }
+
+    const overtimeRounds = localRules.drawOvertimeRounds
+    const lastPlayableRound = normalizedConfig.maxRounds + overtimeRounds
+    if (state.round < lastPlayableRound && isTie) {
+      return false
+    }
+  }
+
+  return true
+}
+
+function resolveNoYakuPoints(state: KoiKoiGameState, playerIndex: 0 | 1): number {
+  const localRules = normalizeGameConfig(state.config).localRules
+  if (localRules.noYakuPolicy === 'both-zero') {
+    return 0
+  }
+  if (localRules.noYakuPolicy === 'seat-points') {
+    const isParent = state.roundStarterIndex === playerIndex
+    return isParent ? localRules.noYakuParentPoints : localRules.noYakuChildPoints
+  }
+  return 0
+}
+
+function getBaseRoundPoints(state: KoiKoiGameState, playerIndex: 0 | 1): number {
+  const player = state.players[playerIndex]
+  const totalYakuPoints = getYakuTotalPoints(player.completedYaku)
+  if (totalYakuPoints > 0) {
+    return totalYakuPoints
+  }
+  return resolveNoYakuPoints(state, playerIndex)
+}
+
+function resolveNextStarterIndex(state: KoiKoiGameState): 0 | 1 {
+  const dealerRotationMode = normalizeGameConfig(state.config).localRules.dealerRotationMode
+  if (dealerRotationMode === 'alternate') {
+    return state.roundStarterIndex === 0 ? 1 : 0
+  }
+  if (!state.roundWinner) {
+    if (state.roundReason === 'exhausted') {
+      return state.roundStarterIndex
+    }
+    return state.roundStarterIndex === 0 ? 1 : 0
+  }
+  const winnerIndex = getPlayerIndex(state.roundWinner)
+  if (dealerRotationMode === 'loser') {
+    return winnerIndex === 0 ? 1 : 0
+  }
+  return winnerIndex
+}
+
 function finishRound(
   state: KoiKoiGameState,
   winnerId: Player['id'] | null,
@@ -484,9 +555,9 @@ function finishRound(
     player1Points: winnerId === 'player1' ? points : 0,
     player2Points: winnerId === 'player2' ? points : 0,
   }
-  const nextRoundScoreHistory = [...state.roundScoreHistory, roundEntry]
+  const nextRoundScoreHistory = [...getRoundScoreHistory(state), roundEntry]
 
-  const maxRoundsReached = state.round >= state.config.maxRounds
+  const maxRoundsReached = hasReachedFinalRound(state, nextPlayers)
   if (maxRoundsReached) {
     return {
       ...clearTurnArtifacts(state),
@@ -583,8 +654,8 @@ function addCardToField(
   )
 }
 
-function markYakuProgress(player: Player): { player: Player; newYaku: Yaku[] } {
-  const nextYaku = calculateYaku(player.captured)
+function markYakuProgress(player: Player, config: GameConfig): { player: Player; newYaku: Yaku[] } {
+  const nextYaku = calculateYaku(player.captured, config.localRules)
   const previousByType = new Map(player.completedYaku.map((item) => [item.type, item]))
   const newYaku = nextYaku.filter((item) => {
     const previous = previousByType.get(item.type)
@@ -598,22 +669,29 @@ function markYakuProgress(player: Player): { player: Player; newYaku: Yaku[] } {
 }
 
 function evaluateRoundAfterTurn(state: KoiKoiGameState): KoiKoiGameState {
+  const normalizedConfig = normalizeGameConfig(state.config)
   const currentPlayer = state.players[state.currentPlayerIndex]
-  const evaluated = markYakuProgress(currentPlayer)
+  const evaluated = markYakuProgress(currentPlayer, normalizedConfig)
   let nextState: KoiKoiGameState = {
     ...state,
+    config: normalizedConfig,
     players: replacePlayer(state.players, state.currentPlayerIndex, evaluated.player),
     newYaku: evaluated.newYaku,
   }
 
-  const currentPlayerPoints = getYakuTotalPoints(evaluated.player.completedYaku)
   const exhausted = isRoundExhausted(nextState)
   const koikoiTriggered = state.koikoiCounts[0] > 0 || state.koikoiCounts[1] > 0
+  const forceStopAfterSingleKoiKoi = koikoiTriggered && !normalizedConfig.localRules.enableKoiKoiShowdown
   if (evaluated.newYaku.length > 0) {
-    if (exhausted || koikoiTriggered) {
+    if (exhausted || forceStopAfterSingleKoiKoi) {
       const stopPoints = koikoiTriggered
         ? getStopRoundPoints(nextState, state.currentPlayerIndex)
-        : Math.max(1, currentPlayerPoints)
+        : getBaseRoundPoints(nextState, state.currentPlayerIndex)
+      return finishRound(nextState, currentPlayer.id, stopPoints, 'stop')
+    }
+
+    if (!canDeclareKoiKoi(nextState, state.currentPlayerIndex)) {
+      const stopPoints = getStopRoundPoints(nextState, state.currentPlayerIndex)
       return finishRound(nextState, currentPlayer.id, stopPoints, 'stop')
     }
 
@@ -631,26 +709,63 @@ function evaluateRoundAfterTurn(state: KoiKoiGameState): KoiKoiGameState {
   return nextState
 }
 
+function isKoiKoiLimitEnabled(state: KoiKoiGameState): boolean {
+  const localRules = normalizeGameConfig(state.config).localRules
+  return localRules.enableKoiKoiShowdown && localRules.koiKoiBonusMode !== 'none' && localRules.koikoiLimit > 0
+}
+
+function canDeclareKoiKoi(state: KoiKoiGameState, playerIndex: 0 | 1): boolean {
+  if (!isKoiKoiLimitEnabled(state)) {
+    return true
+  }
+  return state.koikoiCounts[playerIndex] < normalizeGameConfig(state.config).localRules.koikoiLimit
+}
+
 function getStopRoundPoints(state: KoiKoiGameState, playerIndex: 0 | 1): number {
-  const player = state.players[playerIndex]
+  const config = normalizeGameConfig(state.config)
+  const localRules = config.localRules
   const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
-  const basePoints = Math.max(1, getYakuTotalPoints(player.completedYaku))
-
-  let multiplier = 1
-  if (basePoints >= 7) {
-    multiplier *= 2
-  }
-  if (state.koikoiCounts[opponentIndex] > 0) {
-    multiplier *= 2
+  const basePoints = getBaseRoundPoints(state, playerIndex)
+  if (basePoints <= 0 || localRules.koiKoiBonusMode === 'none') {
+    return basePoints
   }
 
+  const highPointBonus = basePoints >= 7
+  const selfKoiCount = state.koikoiCounts[playerIndex]
+  const opponentKoiCount = state.koikoiCounts[opponentIndex]
+  const hasSelfKoiBonus = selfKoiCount > 0
+  const hasOpponentKoiBonus = opponentKoiCount > 0
+  if (!highPointBonus && !hasSelfKoiBonus && !hasOpponentKoiBonus) {
+    return basePoints
+  }
+
+  if (localRules.koiKoiBonusMode === 'additive') {
+    const additiveMultiplier =
+      1
+      + Number(highPointBonus)
+      + (hasSelfKoiBonus ? selfKoiCount * Math.max(0, localRules.selfKoiBonusFactor - 1) : 0)
+      + (hasOpponentKoiBonus ? opponentKoiCount * Math.max(0, localRules.opponentKoiBonusFactor - 1) : 0)
+    return basePoints * additiveMultiplier
+  }
+
+  const selfMultiplier = hasSelfKoiBonus ? localRules.selfKoiBonusFactor ** selfKoiCount : 1
+  const opponentMultiplier = hasOpponentKoiBonus ? localRules.opponentKoiBonusFactor ** opponentKoiCount : 1
+  const multiplier = (highPointBonus ? 2 : 1) * selfMultiplier * opponentMultiplier
   return basePoints * multiplier
 }
 
 export function createNewGame(config: GameConfig = DEFAULT_CONFIG, seed?: number): KoiKoiGameState {
+  const normalizedConfig = normalizeGameConfig(config)
   const random = seed === undefined ? Math.random : createSeededRandom(seed)
   const starterIndex: 0 | 1 = random() < 0.5 ? 0 : 1
-  return dealRound([createPlayer('player1', config.player1Name), createPlayer('player2', config.player2Name)], config, 1, starterIndex, [], random)
+  return dealRound(
+    [createPlayer('player1', normalizedConfig.player1Name), createPlayer('player2', normalizedConfig.player2Name)],
+    normalizedConfig,
+    1,
+    starterIndex,
+    [],
+    random,
+  )
 }
 
 export function getMatchingFieldCards(
@@ -851,6 +966,14 @@ export function resolveKoiKoi(state: KoiKoiGameState, decision: KoiKoiDecision):
     )
   }
 
+  if (!canDeclareKoiKoi(state, state.currentPlayerIndex)) {
+    const roundPoints = getStopRoundPoints(state, state.currentPlayerIndex)
+    return addTurnAction(
+      finishRound(state, player.id, roundPoints, 'stop'),
+      { player: player.id, type: 'stop' },
+    )
+  }
+
   const nextKoiKoiCounts: readonly [number, number] =
     state.currentPlayerIndex === 0
       ? [state.koikoiCounts[0] + 1, state.koikoiCounts[1]]
@@ -872,19 +995,12 @@ export function startNextRound(state: KoiKoiGameState, seed?: number): KoiKoiGam
   }
 
   const nextRound = state.round + 1
-  const nextStarterIndex =
-    state.roundReason === 'exhausted'
-      ? state.roundStarterIndex
-      : state.roundWinner
-        ? getPlayerIndex(state.roundWinner)
-        : state.roundStarterIndex === 0
-          ? 1
-          : 0
+  const nextStarterIndex = resolveNextStarterIndex(state)
 
   const carryPlayers: PlayerTuple = [
     { ...state.players[0], hand: [], captured: [], completedYaku: [] },
     { ...state.players[1], hand: [], captured: [], completedYaku: [] },
   ]
   const random = seed === undefined ? Math.random : createSeededRandom(seed)
-  return dealRound(carryPlayers, state.config, nextRound, nextStarterIndex, state.roundScoreHistory, random)
+  return dealRound(carryPlayers, state.config, nextRound, nextStarterIndex, getRoundScoreHistory(state), random)
 }

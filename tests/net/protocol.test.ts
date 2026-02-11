@@ -46,4 +46,31 @@ describe('net protocol schema', () => {
     })
     expect(parsed.success).toBe(true)
   })
+
+  it('accepts restartGame command with local rules', () => {
+    const parsed = turnCommandSchema.safeParse({
+      type: 'restartGame',
+      maxRounds: 6,
+      localRules: {
+        yakuPoints: {
+          goko: 10,
+          shiko: 8,
+          'ame-shiko': 7,
+          sanko: 5,
+          inoshikacho: 5,
+          'hanami-zake': 5,
+          'tsukimi-zake': 5,
+          akatan: 5,
+          aotan: 5,
+          tane: 1,
+          tanzaku: 1,
+          kasu: 1,
+        },
+        koiKoiBonusMode: 'additive',
+        enableHanamiZake: false,
+        enableTsukimiZake: true,
+      },
+    })
+    expect(parsed.success).toBe(true)
+  })
 })

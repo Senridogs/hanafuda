@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { createNewGame, type KoiKoiGameState } from '../engine/game'
 import { calculateYaku } from '../engine/yaku'
-import type { Player } from '../engine/types'
+import { normalizeGameConfig, type LocalRuleSettingsInput, type Player } from '../engine/types'
 import type { ActionMessage, NetMessage, TurnCommand } from '../net/protocol'
 import {
   clearCheckpoint,
@@ -59,6 +59,24 @@ function isOutOfTurnAllowedCommand(command: TurnCommand): boolean {
   return command.type === 'restartGame' || command.type === 'startNextRound' || command.type === 'readyNextRound'
 }
 
+function mergeRestartLocalRules(
+  currentRules: LocalRuleSettingsInput,
+  incomingRules?: LocalRuleSettingsInput,
+): LocalRuleSettingsInput | undefined {
+  if (!incomingRules) {
+    return undefined
+  }
+
+  return {
+    ...currentRules,
+    ...incomingRules,
+    yakuPoints: {
+      ...currentRules.yakuPoints,
+      ...incomingRules.yakuPoints,
+    },
+  }
+}
+
 function compactStateForSnapshot(state: KoiKoiGameState): KoiKoiGameState {
   const player1 = state.players[0]
   const player2 = state.players[1]
@@ -86,20 +104,22 @@ function compactStateForSnapshot(state: KoiKoiGameState): KoiKoiGameState {
 }
 
 function hydrateStateSnapshot(state: KoiKoiGameState): KoiKoiGameState {
+  const config = normalizeGameConfig(state.config)
   const player1 = state.players[0]
   const player2 = state.players[1]
   const hydratedPlayers: readonly [Player, Player] = [
     {
       ...player1,
-      completedYaku: calculateYaku(player1.captured),
+      completedYaku: calculateYaku(player1.captured, config.localRules),
     },
     {
       ...player2,
-      completedYaku: calculateYaku(player2.captured),
+      completedYaku: calculateYaku(player2.captured, config.localRules),
     },
   ]
   return {
     ...state,
+    config,
     players: hydratedPlayers,
   }
 }
@@ -276,10 +296,18 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     return clearHeartbeatTimer
   }, [clearHeartbeatTimer, connectionStatus, forceConnectionError, mode, softDisconnect])
 
-  const applyRestartGame = useCallback((maxRounds: 3 | 6 | 12, seed?: number): void => {
+  const applyRestartGame = useCallback((
+    maxRounds: 3 | 6 | 12,
+    localRules?: LocalRuleSettingsInput,
+    seed?: number,
+  ): void => {
+    const mergedLocalRules = mergeRestartLocalRules(gameRef.current.config.localRules, localRules)
     const nextState = createNewGame({
       ...gameRef.current.config,
       maxRounds,
+      ...(mergedLocalRules
+        ? { localRules: normalizeGameConfig({ localRules: mergedLocalRules }).localRules }
+        : {}),
     }, seed)
     gameRef.current = nextState
     setGame(nextState)
@@ -292,7 +320,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
   ) => {
     const nextRoomId = fixedRoomId?.trim() || hostRoomId.trim() || generateRoomId()
     const restored = restoreFromCheckpoint ? loadCheckpoint(nextRoomId, 'host') : null
-    const restoredState = restored ? restored.state : initialState
+    const restoredState = restored ? hydrateStateSnapshot(restored.state) : initialState
     const restoredVersion = restored ? restored.version : 0
 
     shutdownNetwork()
@@ -361,7 +389,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
         }
         versionRef.current += 1
         if (message.command.type === 'restartGame') {
-          applyRestartGame(message.command.maxRounds, message.command.seed)
+          applyRestartGame(message.command.maxRounds, message.command.localRules, message.command.seed)
           sendSnapshot(transport, nextRoomId)
           return
         }
@@ -384,7 +412,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
     }
 
     const restored = loadCheckpoint(targetRoomId, 'guest')
-    const restoredState = restored ? restored.state : initialState
+    const restoredState = restored ? hydrateStateSnapshot(restored.state) : initialState
     const restoredVersion = restored ? restored.version : 0
 
     shutdownNetwork()
@@ -459,7 +487,7 @@ export function useMultiplayerGame(options: UseMultiplayerGameOptions) {
         appendConnectionLog(`受信: ${message.command.type}`)
         versionRef.current += 1
         if (message.command.type === 'restartGame') {
-          applyRestartGame(message.command.maxRounds, message.command.seed)
+          applyRestartGame(message.command.maxRounds, message.command.localRules, message.command.seed)
           return
         }
         onRemoteCommandRef.current?.(message.command)

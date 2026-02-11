@@ -120,6 +120,19 @@
   pointer-events: auto;
 }
 
+.app-chrome-credit {
+  margin: auto 0 0;
+  align-self: flex-start;
+  font-size: 0.62rem;
+  line-height: 1.2;
+  color: rgb(214 203 179 / 92%);
+  overflow-wrap: anywhere;
+}
+
+.app-chrome-credit a {
+  color: #f0cf93;
+}
+
 
 .chrome-toggle-button {
   padding: 3px 8px;
@@ -160,9 +173,9 @@
 
 .topbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   min-height: 0;
 }
 
@@ -181,27 +194,6 @@
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.round-count-selector {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px;
-  border-radius: 10px;
-  border: 1px solid rgb(249 221 170 / 24%);
-  background: rgb(0 0 0 / 22%);
-}
-
-.round-count-button {
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: #2e3e52;
-  font-size: 0.82rem;
-}
-
-.round-count-button.active {
-  background: #c77434;
 }
 
 .lobby-round-selector {
@@ -254,29 +246,53 @@
   box-shadow: 0 0 0 1px rgb(255 154 103 / 28%);
 }
 
+.cpu-battle-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgb(249 221 170 / 24%);
+  background: linear-gradient(180deg, rgb(7 14 18 / 62%), rgb(17 23 32 / 66%));
+}
+
+.cpu-battle-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.cpu-start-button {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .multiplayer-lobby {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 12px;
   border-radius: 12px;
-  border: 1px solid rgb(249 221 170 / 24%);
+  border: 1px solid rgb(180 200 230 / 24%);
   background: linear-gradient(180deg, rgb(7 14 18 / 62%), rgb(17 23 32 / 66%));
+}
+
+.multiplayer-lobby-title {
+  margin: 0 0 4px 0;
+  font-size: 0.9rem;
+  color: #b8cce8;
 }
 
 .difficulty-selector {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid rgb(249 221 170 / 24%);
-  background: linear-gradient(180deg, rgb(7 14 18 / 62%), rgb(17 23 32 / 66%));
+  gap: 6px;
 }
 
 .difficulty-selector h3 {
-  margin: 0 0 4px 0;
-  font-size: 0.9rem;
+  margin: 0;
+  font-size: 0.85rem;
   color: #f7dcba;
 }
 
@@ -2198,6 +2214,10 @@ button:hover {
     padding: 10px;
   }
 
+  .app-chrome-credit {
+    font-size: 0.58rem;
+  }
+
   .chrome-toggle-button,
   .fullscreen-button {
     background: rgb(0 0 0 / 52%);
@@ -2500,7 +2520,6 @@ button:hover {
 
   .topbar p,
   .turn-badge,
-  .round-count-button,
   .lobby-status {
     font-size: 0.76rem;
   }
@@ -2511,15 +2530,6 @@ button:hover {
 
   .topbar-actions {
     gap: 6px;
-  }
-
-  .round-count-selector {
-    padding: 2px;
-    gap: 4px;
-  }
-
-  .round-count-button {
-    padding: 4px 8px;
   }
 
   .score-table-panel {

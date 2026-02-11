@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { getCardById } from '../../src/engine/cards'
 import { calculateYaku, getYakuTotalPoints } from '../../src/engine/yaku'
-import type { YakuType } from '../../src/engine/types'
+import { DEFAULT_LOCAL_RULE_SETTINGS, type YakuType } from '../../src/engine/types'
 
 function cardsById(ids: readonly string[]) {
   return ids.map((id) => {
@@ -186,5 +186,77 @@ describe('calculateYaku', () => {
     expect(hasYakuType(yaku, 'hanami-zake')).toBe(true)
     expect(hasYakuType(yaku, 'tsukimi-zake')).toBe(true)
     expect(getYakuTotalPoints(yaku)).toBe(10)
+  })
+
+  it('can disable 花見/月見 via local rules', () => {
+    const captured = cardsById(['mar-hikari', 'aug-hikari', 'sep-tane'])
+    const yaku = calculateYaku(captured, {
+      ...DEFAULT_LOCAL_RULE_SETTINGS,
+      enableHanamiZake: false,
+      enableTsukimiZake: false,
+    })
+
+    expect(hasYakuType(yaku, 'hanami-zake')).toBe(false)
+    expect(hasYakuType(yaku, 'tsukimi-zake')).toBe(false)
+  })
+
+  it('uses custom yaku points from local rules', () => {
+    const rules = {
+      ...DEFAULT_LOCAL_RULE_SETTINGS,
+      yakuPoints: {
+        ...DEFAULT_LOCAL_RULE_SETTINGS.yakuPoints,
+        goko: 15,
+        tane: 3,
+      },
+    }
+
+    const goko = calculateYaku(cardsById(['jan-hikari', 'mar-hikari', 'aug-hikari', 'nov-hikari', 'dec-hikari']), rules)
+    const tane = calculateYaku(cardsById(['feb-tane', 'apr-tane', 'may-tane', 'aug-tane', 'sep-tane', 'nov-tane']), rules)
+
+    expect(getYakuPointsByType(goko, 'goko')).toBe(15)
+    expect(getYakuPointsByType(tane, 'tane')).toBe(4)
+  })
+
+  it('does not establish yaku when configured points are 0', () => {
+    const rules = {
+      ...DEFAULT_LOCAL_RULE_SETTINGS,
+      yakuPoints: {
+        ...DEFAULT_LOCAL_RULE_SETTINGS.yakuPoints,
+        goko: 0,
+        tane: 0,
+      },
+    }
+
+    const goko = calculateYaku(cardsById(['jan-hikari', 'mar-hikari', 'aug-hikari', 'nov-hikari', 'dec-hikari']), rules)
+    const tane = calculateYaku(cardsById(['feb-tane', 'apr-tane', 'may-tane', 'aug-tane', 'sep-tane', 'nov-tane']), rules)
+
+    expect(hasYakuType(goko, 'goko')).toBe(false)
+    expect(hasYakuType(tane, 'tane')).toBe(false)
+  })
+
+  it('invalidates 花見/月見 via 雨流れ when 柳に小野道風 is captured', () => {
+    const yaku = calculateYaku(
+      cardsById(['mar-hikari', 'aug-hikari', 'sep-tane', 'nov-hikari']),
+      {
+        ...DEFAULT_LOCAL_RULE_SETTINGS,
+        enableAmeNagare: true,
+      },
+    )
+
+    expect(hasYakuType(yaku, 'hanami-zake')).toBe(false)
+    expect(hasYakuType(yaku, 'tsukimi-zake')).toBe(false)
+  })
+
+  it('invalidates 花見/月見 via 霧流れ when 桐札 is captured', () => {
+    const yaku = calculateYaku(
+      cardsById(['mar-hikari', 'aug-hikari', 'sep-tane', 'dec-kasu-1']),
+      {
+        ...DEFAULT_LOCAL_RULE_SETTINGS,
+        enableKiriNagare: true,
+      },
+    )
+
+    expect(hasYakuType(yaku, 'hanami-zake')).toBe(false)
+    expect(hasYakuType(yaku, 'tsukimi-zake')).toBe(false)
   })
 })
