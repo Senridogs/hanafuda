@@ -504,10 +504,10 @@ function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly stri
     notes.push('こいこい合戦: 相手がこいこい済みでも、役成立時にこいこいを続行できます。')
   }
 
-  if (localRules.enableKoiKoiShowdown && localRules.koiKoiBonusMode !== 'none' && localRules.koikoiLimit > 0) {
+  if (localRules.enableKoiKoiShowdown && localRules.koikoiLimit > 0) {
     notes.push(`同一プレイヤーのこいこい回数は ${localRules.koikoiLimit} 回までです。`)
   }
-  if (!localRules.yakuEnabled['hanami-zake'] || !localRules.yakuEnabled['tsukimi-zake']) {
+  if (RULE_HELP_BASIC_YAKU_ENTRIES.some((entry) => !localRules.yakuEnabled[entry.key as YakuType])) {
     notes.push('ローカルルールで無効化した役は判定されません。')
   }
   if (localRules.yakuEnabled['hanami-zake'] && localRules.enableAmeNagare) {
