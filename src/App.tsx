@@ -522,9 +522,9 @@ function normalizeLoadedGameState(state: KoiKoiGameState): KoiKoiGameState {
 
 function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly string[] {
   const notes: string[] = []
-  notes.push(`四点役: ${localRules.enableFourCardsYaku && localRules.yakuEnabled.shiten ? '有効' : '無効'}`)
-  notes.push(`花見で一杯: ${localRules.enableHanamiZake && localRules.yakuEnabled['hanami-zake'] ? '有効' : '無効'}`)
-  notes.push(`月見で一杯: ${localRules.enableTsukimiZake && localRules.yakuEnabled['tsukimi-zake'] ? '有効' : '無効'}`)
+  notes.push(`四点役: ${localRules.yakuEnabled.shiten ? '有効' : '無効'}`)
+  notes.push(`花見で一杯: ${localRules.yakuEnabled['hanami-zake'] ? '有効' : '無効'}`)
+  notes.push(`月見で一杯: ${localRules.yakuEnabled['tsukimi-zake'] ? '有効' : '無効'}`)
 
   switch (localRules.noYakuPolicy) {
     case 'both-zero':
@@ -576,19 +576,7 @@ function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly stri
 }
 
 function isEffectiveYakuEnabled(localRules: LocalRuleSettings, key: YakuType): boolean {
-  if (!localRules.yakuEnabled[key] || localRules.yakuPoints[key] <= 0) {
-    return false
-  }
-  if (key === 'shiten') {
-    return localRules.enableFourCardsYaku
-  }
-  if (key === 'hanami-zake') {
-    return localRules.enableHanamiZake
-  }
-  if (key === 'tsukimi-zake') {
-    return localRules.enableTsukimiZake
-  }
-  return true
+  return localRules.yakuEnabled[key] && localRules.yakuPoints[key] > 0
 }
 
 function hasAnyEnabledYaku(localRules: LocalRuleSettings): boolean {
@@ -3909,15 +3897,16 @@ function App() {
   }, [applyLocalRuleChange, localRulesForPanel])
 
   const handleChangeYakuEnabled = useCallback((yakuType: YakuType, enabled: boolean): void => {
+    const nextYakuEnabled = {
+      ...localRulesForPanel.yakuEnabled,
+      [yakuType]: enabled,
+    }
     const nextRules = normalizeLocalRuleSettings({
       ...localRulesForPanel,
-      yakuEnabled: {
-        ...localRulesForPanel.yakuEnabled,
-        [yakuType]: enabled,
-      },
-      ...(yakuType === 'shiten' ? { enableFourCardsYaku: enabled } : {}),
-      ...(yakuType === 'hanami-zake' ? { enableHanamiZake: enabled } : {}),
-      ...(yakuType === 'tsukimi-zake' ? { enableTsukimiZake: enabled } : {}),
+      yakuEnabled: nextYakuEnabled,
+      enableFourCardsYaku: nextYakuEnabled.shiten,
+      enableHanamiZake: nextYakuEnabled['hanami-zake'],
+      enableTsukimiZake: nextYakuEnabled['tsukimi-zake'],
     })
 
     if (!enabled) {

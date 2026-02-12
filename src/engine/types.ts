@@ -310,22 +310,12 @@ export function normalizeLocalRuleSettings(settings?: LocalRuleSettingsInput): L
     settings?.drawOvertimeMode === 'until-decision'
       ? 'until-decision'
       : 'fixed'
-  const normalizedYakuEnabledBase = normalizeYakuEnabledTable(settings?.yakuEnabled)
-  const normalizedYakuEnabled: YakuEnabledTable = {
-    ...normalizedYakuEnabledBase,
-    'hanami-zake':
-      typeof settings?.enableHanamiZake === 'boolean'
-        ? settings.enableHanamiZake
-        : normalizedYakuEnabledBase['hanami-zake'],
-    'tsukimi-zake':
-      typeof settings?.enableTsukimiZake === 'boolean'
-        ? settings.enableTsukimiZake
-        : normalizedYakuEnabledBase['tsukimi-zake'],
-    shiten:
-      typeof settings?.enableFourCardsYaku === 'boolean'
-        ? settings.enableFourCardsYaku
-        : normalizedYakuEnabledBase.shiten,
-  }
+  const normalizedYakuEnabled: YakuEnabledTable = normalizeYakuEnabledTable({
+    ...settings?.yakuEnabled,
+    ...(typeof settings?.enableHanamiZake === 'boolean' ? { 'hanami-zake': settings.enableHanamiZake } : {}),
+    ...(typeof settings?.enableTsukimiZake === 'boolean' ? { 'tsukimi-zake': settings.enableTsukimiZake } : {}),
+    ...(typeof settings?.enableFourCardsYaku === 'boolean' ? { shiten: settings.enableFourCardsYaku } : {}),
+  })
   return {
     yakuPoints: normalizeYakuPointTable(settings?.yakuPoints),
     yakuEnabled: normalizedYakuEnabled,
