@@ -2200,6 +2200,30 @@ button:hover {
   }
 }
 
+@media (max-height: 500px) and (orientation: landscape) {
+  .chrome-toggle-row.desktop-controls .chrome-toggle-button,
+  .chrome-toggle-row.desktop-controls .fullscreen-button {
+    padding: 3px 8px;
+    font-size: 0.65rem;
+  }
+
+  .app-chrome-panel {
+    max-height: min(84dvh, 400px);
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .topbar {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .topbar h1 {
+    font-size: 1rem;
+  }
+}
+
 @media (max-width: 720px) {
   .app {
     --card-width: clamp(54px, 12.4vw, 68px);
