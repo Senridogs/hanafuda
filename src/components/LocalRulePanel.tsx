@@ -462,7 +462,10 @@ export function LocalRulePanel(props: LocalRulePanelProps) {
                 </div>
               </div>
             </div>
-            <p className="local-rule-setting-help">親点/子点は「親子点数」のときだけ有効です。こいこい後に役が成立して上がる場合は、この設定ではなく成立役点にこいこい倍率を適用します。</p>
+            <div className="local-rule-info-box">
+              <p className="local-rule-info-box-line">双方0点: 役なし時は両者0点</p>
+              <p className="local-rule-info-box-line">親子点数: 役なし時に親点/子点を適用</p>
+            </div>
           </RuleSection>
 
           <RuleSection
