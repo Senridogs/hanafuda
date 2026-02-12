@@ -171,8 +171,11 @@ export function buildYakuProgressEntries(
   const enableKiriNagare = ruleOptions.enableKiriNagare ?? false
   const completedTypes = new Set(yaku.map((item) => item.type))
   const capturedIds = new Set(captured.map((card) => card.id))
-  const hanamiBlockedByAme = enableHanamiZake && enableAmeNagare && capturedIds.has('nov-hikari')
-  const tsukimiBlockedByKiri = enableTsukimiZake && enableKiriNagare && captured.some((card) => card.month === 12)
+  const hasRainFlowBlock = capturedIds.has('nov-hikari')
+  const hasKiriFlowBlock = captured.some((card) => card.month === 12)
+  const isSakeBlocked = (enableAmeNagare && hasRainFlowBlock) || (enableKiriNagare && hasKiriFlowBlock)
+  const hanamiBlockedByAme = enableHanamiZake && isSakeBlocked
+  const tsukimiBlockedByKiri = enableTsukimiZake && isSakeBlocked
   const hasRainMan = capturedIds.has('nov-hikari')
   const gokoDone = completedTypes.has('goko')
   const shikoDone = completedTypes.has('shiko') || gokoDone
@@ -273,14 +276,16 @@ export function buildYakuProgressEntries(
       cards: showSanko ? sankoProgressCards : [],
       done: sankoDone,
     },
-    {
-      key: 'shiten',
-      label: '四点役',
-      current: showShiten ? shitenProgressCount : 0,
-      target: 4,
-      cards: showShiten ? shitenProgressCards : [],
-      done: shitenDone,
-    },
+    ...(enableFourCardsYaku ? [
+      {
+        key: 'shiten' as const,
+        label: '四点役',
+        current: showShiten ? shitenProgressCount : 0,
+        target: 4,
+        cards: showShiten ? shitenProgressCards : [],
+        done: shitenDone,
+      },
+    ] : []),
     {
       key: 'hanami-zake',
       label: '花見で一杯',

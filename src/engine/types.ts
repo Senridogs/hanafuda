@@ -314,17 +314,17 @@ export function normalizeLocalRuleSettings(settings?: LocalRuleSettingsInput): L
   const normalizedYakuEnabled: YakuEnabledTable = {
     ...normalizedYakuEnabledBase,
     'hanami-zake':
-      typeof settings?.yakuEnabled?.['hanami-zake'] === 'boolean'
-        ? normalizedYakuEnabledBase['hanami-zake']
-        : settings?.enableHanamiZake ?? normalizedYakuEnabledBase['hanami-zake'],
+      typeof settings?.enableHanamiZake === 'boolean'
+        ? settings.enableHanamiZake
+        : normalizedYakuEnabledBase['hanami-zake'],
     'tsukimi-zake':
-      typeof settings?.yakuEnabled?.['tsukimi-zake'] === 'boolean'
-        ? normalizedYakuEnabledBase['tsukimi-zake']
-        : settings?.enableTsukimiZake ?? normalizedYakuEnabledBase['tsukimi-zake'],
+      typeof settings?.enableTsukimiZake === 'boolean'
+        ? settings.enableTsukimiZake
+        : normalizedYakuEnabledBase['tsukimi-zake'],
     shiten:
-      typeof settings?.yakuEnabled?.shiten === 'boolean'
-        ? normalizedYakuEnabledBase.shiten
-        : settings?.enableFourCardsYaku ?? normalizedYakuEnabledBase.shiten,
+      typeof settings?.enableFourCardsYaku === 'boolean'
+        ? settings.enableFourCardsYaku
+        : normalizedYakuEnabledBase.shiten,
   }
   return {
     yakuPoints: normalizeYakuPointTable(settings?.yakuPoints),

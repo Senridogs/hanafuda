@@ -76,10 +76,10 @@ function oracleCalculateYaku(capturedCards: readonly HanafudaCard[]): Yaku[] {
     yaku.push({ type: 'tsukimi-zake', name: '月見で一杯', points: 5, cards: pickCardsByOrder(byId, TSUKIMI_IDS) })
   }
   if (hasAll(idSet, AKATAN_IDS)) {
-    yaku.push({ type: 'akatan', name: '赤短', points: 5, cards: pickCardsByOrder(byId, AKATAN_IDS) })
+    yaku.push({ type: 'akatan', name: '赤短', points: 5 + (tanzakuCards.length - 3), cards: pickCardsByOrder(byId, AKATAN_IDS) })
   }
   if (hasAll(idSet, AOTAN_IDS)) {
-    yaku.push({ type: 'aotan', name: '青短', points: 5, cards: pickCardsByOrder(byId, AOTAN_IDS) })
+    yaku.push({ type: 'aotan', name: '青短', points: 5 + (tanzakuCards.length - 3), cards: pickCardsByOrder(byId, AOTAN_IDS) })
   }
 
   if (taneCards.length >= 5) {

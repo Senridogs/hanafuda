@@ -55,8 +55,11 @@ function getSakeFlowBlockingState(
 ): { readonly hanamiBlocked: boolean; readonly tsukimiBlocked: boolean } {
   const hasRainFlowBlock = capturedCards.some((card) => card.id === RAIN_FLOW_BLOCK_CARD_ID)
   const hasKiriFlowBlock = capturedCards.some((card) => card.month === KIRI_FLOW_BLOCK_MONTH)
-  const hanamiBlocked = options.enableHanamiZake && options.enableAmeNagare && hasRainFlowBlock
-  const tsukimiBlocked = options.enableTsukimiZake && options.enableKiriNagare && hasKiriFlowBlock
+  const isSakeBlocked =
+    (options.enableAmeNagare && hasRainFlowBlock)
+    || (options.enableKiriNagare && hasKiriFlowBlock)
+  const hanamiBlocked = options.enableHanamiZake && isSakeBlocked
+  const tsukimiBlocked = options.enableTsukimiZake && isSakeBlocked
   return { hanamiBlocked, tsukimiBlocked }
 }
 
@@ -67,7 +70,21 @@ export function calculateYaku(
   const normalizedRules = normalizeLocalRuleSettings(localRules)
   const points = normalizedRules.yakuPoints
   const enabled = normalizedRules.yakuEnabled
-  const isYakuEnabled = (type: Yaku['type']): boolean => enabled[type] && points[type] > 0
+  const isYakuEnabled = (type: Yaku['type']): boolean => {
+    if (!enabled[type] || points[type] <= 0) {
+      return false
+    }
+    if (type === 'shiten') {
+      return normalizedRules.enableFourCardsYaku
+    }
+    if (type === 'hanami-zake') {
+      return normalizedRules.enableHanamiZake
+    }
+    if (type === 'tsukimi-zake') {
+      return normalizedRules.enableTsukimiZake
+    }
+    return true
+  }
   const yaku: Yaku[] = []
   const hikariCards = capturedCards.filter((card) => card.type === 'hikari')
   const taneCards = capturedCards.filter((card) => card.type === 'tane')
@@ -95,8 +112,7 @@ export function calculateYaku(
   }
 
   if (isYakuEnabled('inoshikacho') && hasAllCards(capturedCards, INOSHIKACHO_IDS)) {
-    const yakuPoints = points.inoshikacho + (taneCards.length - 3)
-    yaku.push(createYaku('inoshikacho', '猪鹿蝶', yakuPoints, findCardsByIds(capturedCards, INOSHIKACHO_IDS)))
+    yaku.push(createYaku('inoshikacho', '猪鹿蝶', points.inoshikacho, findCardsByIds(capturedCards, INOSHIKACHO_IDS)))
   }
 
   const { hanamiBlocked, tsukimiBlocked } = getSakeFlowBlockingState(capturedCards, {
