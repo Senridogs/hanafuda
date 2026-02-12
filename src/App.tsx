@@ -61,6 +61,7 @@ import {
 import { calculateYaku, getYakuTotalPoints } from './engine/yaku'
 import { MultiplayerLobby } from './components/MultiplayerLobby'
 import { LocalRulePanel } from './components/LocalRulePanel'
+import { START_MATCH_VALIDATION_MESSAGE } from './constants/validationMessages'
 import {
   AI_THINK_DELAY_MS,
   SYSTEM_STEP_DELAY_MS,
@@ -1962,7 +1963,7 @@ function App() {
   const canEditLocalRules = !isLobbyConnected && (multiplayer.mode === 'cpu' || !hasMatchStarted)
   const canSelectRoundCount = !isLobbyConnected && (multiplayer.mode === 'cpu' || !hasMatchStarted)
   const hasEnabledYaku = hasAnyEnabledYaku(localRulesForPanel)
-  const startValidationMessage = '有効かつ1点以上の役が選択されていないため、対戦を開始できません。役一覧で役を有効化し、点数を1点以上に設定してください。'
+  const startValidationMessage = START_MATCH_VALIDATION_MESSAGE
   const isKoikoiDecisionSequencing = game.phase === 'koikoiDecision' && !isKoikoiDecisionChoiceVisible
   const koikoiEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'koikoi')
   const stopEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'stop')

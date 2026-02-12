@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from '../../src/App'
+import { START_MATCH_VALIDATION_MESSAGE } from '../../src/constants/validationMessages'
 import { createNewGame, getMatchingFieldCards } from '../../src/engine/game'
 
 const originalMatchMedia = window.matchMedia
@@ -180,7 +181,7 @@ describe('App interaction safeguards', () => {
     const hostButton = screen.getByRole('button', { name: '部屋を作る' }) as HTMLButtonElement
     expect(cpuButton.disabled).toBe(true)
     expect(hostButton.disabled).toBe(true)
-    expect(screen.getByText('有効かつ1点以上の役が選択されていないため、対戦を開始できません。役一覧で役を有効化し、点数を1点以上に設定してください。')).toBeTruthy()
+    expect(screen.getByText(START_MATCH_VALIDATION_MESSAGE)).toBeTruthy()
   })
 
 
@@ -206,7 +207,7 @@ describe('App interaction safeguards', () => {
     const hostButton = screen.getByRole('button', { name: '部屋を作る' }) as HTMLButtonElement
     expect(cpuButton.disabled).toBe(true)
     expect(hostButton.disabled).toBe(true)
-    expect(screen.getByText('有効かつ1点以上の役が選択されていないため、対戦を開始できません。役一覧で役を有効化し、点数を1点以上に設定してください。')).toBeTruthy()
+    expect(screen.getByText(START_MATCH_VALIDATION_MESSAGE)).toBeTruthy()
   })
 
   it('allows enabling 四点役 again after disabling all yaku', () => {
