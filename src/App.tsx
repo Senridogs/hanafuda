@@ -534,7 +534,7 @@ function normalizeLoadedGameState(state: KoiKoiGameState): KoiKoiGameState {
   }
 }
 
-function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly string[] {
+export function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly string[] {
   const notes: string[] = []
   notes.push(`四点役: ${localRules.enableFourCardsYaku && localRules.yakuEnabled.shiten ? '有効' : '無効'}`)
   notes.push(`花見で一杯: ${localRules.enableHanamiZake && localRules.yakuEnabled['hanami-zake'] ? '有効' : '無効'}`)
@@ -576,7 +576,17 @@ function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly stri
   if (localRules.yakuEnabled['tsukimi-zake'] && localRules.enableKiriNagare) {
     notes.push('霧流れ: 桐札を取ると月見で一杯は不成立になります。')
   }
-  notes.push(`親の決め方: ${localRules.dealerRotationMode === 'winner' ? '勝者が次の親' : '毎局交代'}`)
+  switch (localRules.dealerRotationMode) {
+    case 'winner':
+      notes.push('親の決め方: 勝者が次の親')
+      break
+    case 'loser':
+      notes.push('親の決め方: 敗者が次の親')
+      break
+    case 'alternate':
+      notes.push('親の決め方: 毎局交代')
+      break
+  }
   if (!localRules.enableDrawOvertime) {
     notes.push('延長戦: 無効')
   } else {
