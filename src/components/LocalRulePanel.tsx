@@ -395,10 +395,11 @@ export function LocalRulePanel(props: LocalRulePanelProps) {
                 />
               </div>
             </div>
-            <p className="local-rule-setting-help">
-              デフォルトでは「こいこい後に次の役が出たら上がり確定」です。こいこい合戦を有効にすると、互いにこいこいを続けられます。
-              倍率なしは加算/乗算を行わない旧仕様です。上限数は「こいこい合戦 + 加算式/乗算式」のときだけ有効です（0で上限なし）。
-            </p>
+            <div className="local-rule-info-box">
+              <p className="local-rule-info-box-line">合戦OFF: こいこい後に次の役が出たら上がり確定</p>
+              <p className="local-rule-info-box-line">合戦ON: 互いにこいこいを続けられる</p>
+              <p className="local-rule-info-box-line">上限数: 合戦ON + 加算/乗算時のみ有効（0で上限なし）</p>
+            </div>
           </RuleSection>
 
           <RuleSection
