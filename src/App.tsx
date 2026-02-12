@@ -229,6 +229,13 @@ const RULE_HELP_HIGH_YAKU_ENTRIES: readonly RuleHelpYakuEntry[] = [
     exampleCardIds: ['jan-hikari', 'mar-hikari', 'dec-hikari'],
   },
   {
+    key: 'shiten',
+    name: '四点役',
+    condition: '同じ月の札を4枚',
+    points: '4点',
+    exampleCardIds: ['jan-hikari', 'jan-tanzaku', 'jan-kasu-1', 'jan-kasu-2'],
+  },
+  {
     key: 'inoshikacho',
     name: '猪鹿蝶',
     condition: '牡丹に蝶・萩に猪・紅葉に鹿',
@@ -314,16 +321,39 @@ function buildDynamicYakuEntries(
   entries: readonly RuleHelpYakuEntry[],
   localRules: LocalRuleSettings,
 ): RuleHelpYakuEntry[] {
+  const isEntryEnabled = (key: YakuType): boolean => {
+    if (!localRules.yakuEnabled[key] || localRules.yakuPoints[key] <= 0) {
+      return false
+    }
+    if (key === 'shiten') {
+      return localRules.enableFourCardsYaku
+    }
+    if (key === 'hanami-zake') {
+      return localRules.enableHanamiZake
+    }
+    if (key === 'tsukimi-zake') {
+      return localRules.enableTsukimiZake
+    }
+    return true
+  }
+
   return entries
     .filter((entry) => {
       const key = entry.key as YakuType
-      return localRules.yakuEnabled[key] && localRules.yakuPoints[key] > 0
+      return isEntryEnabled(key)
     })
     .map((entry) => {
       const basePoints = localRules.yakuPoints[entry.key as YakuType]
       const suffix = YAKU_BONUS_SUFFIX[entry.key]
+      const dynamicCondition =
+        entry.key === 'hanami-zake' && localRules.enableAmeNagare
+          ? `${entry.condition}（雨流れ: 柳に小野道風で不成立）`
+          : entry.key === 'tsukimi-zake' && localRules.enableKiriNagare
+            ? `${entry.condition}（霧流れ: 桐札で不成立）`
+            : entry.condition
       return {
         ...entry,
+        condition: dynamicCondition,
         points: suffix ? `${basePoints}点 ${suffix}` : `${basePoints}点`,
       }
     })
@@ -506,6 +536,10 @@ function normalizeLoadedGameState(state: KoiKoiGameState): KoiKoiGameState {
 
 function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly string[] {
   const notes: string[] = []
+  notes.push(`四点役: ${localRules.enableFourCardsYaku && localRules.yakuEnabled.shiten ? '有効' : '無効'}`)
+  notes.push(`花見で一杯: ${localRules.enableHanamiZake && localRules.yakuEnabled['hanami-zake'] ? '有効' : '無効'}`)
+  notes.push(`月見で一杯: ${localRules.enableTsukimiZake && localRules.yakuEnabled['tsukimi-zake'] ? '有効' : '無効'}`)
+
   switch (localRules.noYakuPolicy) {
     case 'both-zero':
       notes.push('役が1つもない場合は 0点 になります。')
@@ -541,6 +575,16 @@ function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly stri
   }
   if (localRules.yakuEnabled['tsukimi-zake'] && localRules.enableKiriNagare) {
     notes.push('霧流れ: 桐札を取ると月見で一杯は不成立になります。')
+  }
+  notes.push(`親の決め方: ${localRules.dealerRotationMode === 'winner' ? '勝者が次の親' : '毎局交代'}`)
+  if (!localRules.enableDrawOvertime) {
+    notes.push('延長戦: 無効')
+  } else {
+    notes.push(
+      localRules.drawOvertimeMode === 'until-decision'
+        ? '延長戦: サドンデス（引き分けが出るまで1局ずつ）'
+        : `延長戦: 固定局数（${localRules.drawOvertimeRounds}局）`,
+    )
   }
   return notes
 }
@@ -594,7 +638,7 @@ function getPcYakuEntryRank(key: string): number {
 }
 
 function filterInMatchYakuEntries(entries: readonly VisibleYakuProgressState[]): readonly VisibleYakuProgressState[] {
-  return entries.filter((entry) => entry.key !== 'shiten')
+  return entries
 }
 
 function buildRoundPointBreakdownLines(game: KoiKoiGameState): readonly string[] {
