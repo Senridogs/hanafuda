@@ -516,12 +516,17 @@ export function LocalRulePanel(props: LocalRulePanelProps) {
               <p className="local-rule-info-box-line">勝負が決まるまで: 同点のあいだ自動で延長する</p>
             </div>
           </RuleSection>
+          <div className="local-rule-reset-area">
+            <p className="local-rule-panel-note">{footerNote}</p>
+            <button type="button" className="local-rule-reset-button" onClick={onResetToDefaults} disabled={!canEdit}>
+              デフォルトに戻す
+            </button>
+          </div>
         </div>
 
         <div className="local-rule-panel-footer">
-          <p className="local-rule-panel-note">{footerNote}</p>
-          <button type="button" onClick={onResetToDefaults} disabled={!canEdit}>
-            デフォルトに戻す
+          <button type="button" className="local-rule-close-button" onClick={onClose}>
+            閉じる
           </button>
         </div>
       </section>
