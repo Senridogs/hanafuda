@@ -180,7 +180,7 @@ describe('App interaction safeguards', () => {
     const hostButton = screen.getByRole('button', { name: '部屋を作る' }) as HTMLButtonElement
     expect(cpuButton.disabled).toBe(true)
     expect(hostButton.disabled).toBe(true)
-    expect(screen.getAllByText('有効かつ1点以上の役が選択されていないため、対戦を開始できません。役一覧で役を有効化し、点数を1点以上に設定してください。').length).toBeGreaterThan(0)
+    expect(screen.getByText('有効かつ1点以上の役が選択されていないため、対戦を開始できません。役一覧で役を有効化し、点数を1点以上に設定してください。')).toBeTruthy()
   })
 
 
@@ -206,7 +206,7 @@ describe('App interaction safeguards', () => {
     const hostButton = screen.getByRole('button', { name: '部屋を作る' }) as HTMLButtonElement
     expect(cpuButton.disabled).toBe(true)
     expect(hostButton.disabled).toBe(true)
-    expect(screen.getAllByText('有効かつ1点以上の役が選択されていないため、対戦を開始できません。役一覧で役を有効化し、点数を1点以上に設定してください。').length).toBeGreaterThan(0)
+    expect(screen.getByText('有効かつ1点以上の役が選択されていないため、対戦を開始できません。役一覧で役を有効化し、点数を1点以上に設定してください。')).toBeTruthy()
   })
 
   it('allows enabling 四点役 again after disabling all yaku', () => {

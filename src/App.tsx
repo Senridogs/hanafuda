@@ -4340,9 +4340,6 @@ function App() {
                     </div>
                   </div>
                 </div>
-                {!hasEnabledYaku ? (
-                  <p className="lobby-section-note" role="alert">{startValidationMessage}</p>
-                ) : null}
               </section>
 
               <MultiplayerLobby
