@@ -302,6 +302,32 @@ const RULE_HELP_BASIC_YAKU_ENTRIES: readonly RuleHelpYakuEntry[] = [
   ...RULE_HELP_HIGH_YAKU_ENTRIES,
   ...RULE_HELP_COUNT_YAKU_ENTRIES,
 ]
+const YAKU_BONUS_SUFFIX: Readonly<Record<string, string>> = {
+  inoshikacho: '+ 追加種札で加点',
+  akatan: '+ 追加短冊で加点',
+  aotan: '+ 追加短冊で加点',
+  tane: '+ 追加種札で加点',
+  tanzaku: '+ 追加短冊で加点',
+  kasu: '+ 追加カス札で加点',
+}
+function buildDynamicYakuEntries(
+  entries: readonly RuleHelpYakuEntry[],
+  localRules: LocalRuleSettings,
+): RuleHelpYakuEntry[] {
+  return entries
+    .filter((entry) => {
+      const key = entry.key as YakuType
+      return localRules.yakuEnabled[key] && localRules.yakuPoints[key] > 0
+    })
+    .map((entry) => {
+      const basePoints = localRules.yakuPoints[entry.key as YakuType]
+      const suffix = YAKU_BONUS_SUFFIX[entry.key]
+      return {
+        ...entry,
+        points: suffix ? `${basePoints}点 ${suffix}` : `${basePoints}点`,
+      }
+    })
+}
 const RULE_HELP_CARD_ID_MAP = new Map(HANAFUDA_CARDS.map((card) => [card.id, card] as const))
 const LOCAL_RULE_YAKU_FIELDS: readonly {
   key: YakuType
@@ -504,10 +530,10 @@ function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly stri
     notes.push('こいこい合戦: 相手がこいこい済みでも、役成立時にこいこいを続行できます。')
   }
 
-  if (localRules.enableKoiKoiShowdown && localRules.koiKoiBonusMode !== 'none' && localRules.koikoiLimit > 0) {
+  if (localRules.enableKoiKoiShowdown && localRules.koikoiLimit > 0) {
     notes.push(`同一プレイヤーのこいこい回数は ${localRules.koikoiLimit} 回までです。`)
   }
-  if (!localRules.yakuEnabled['hanami-zake'] || !localRules.yakuEnabled['tsukimi-zake']) {
+  if (RULE_HELP_BASIC_YAKU_ENTRIES.some((entry) => !localRules.yakuEnabled[entry.key as YakuType])) {
     notes.push('ローカルルールで無効化した役は判定されません。')
   }
   if (localRules.yakuEnabled['hanami-zake'] && localRules.enableAmeNagare) {
@@ -1924,6 +1950,10 @@ function App() {
     () => buildRuleHelpScoringNotes(activeLocalRules),
     [activeLocalRules],
   )
+  const ruleHelpYakuEntries = useMemo(
+    () => buildDynamicYakuEntries(RULE_HELP_BASIC_YAKU_ENTRIES, activeLocalRules),
+    [activeLocalRules],
+  )
   const ruleHelpPages = useMemo<readonly RuleHelpPage[]>(() => {
     const monthRanges: ReadonlyArray<readonly [number, number]> = (() => {
       if (!useMobileRuleHelpPagination) {
@@ -1965,7 +1995,7 @@ function App() {
         key: 'yaku-main',
         title: '役一覧（基本役）',
         subtitle: '点数役・枚数役',
-        content: <RuleHelpYakuPage entries={RULE_HELP_BASIC_YAKU_ENTRIES} notes={ruleHelpScoringNotes} />,
+        content: <RuleHelpYakuPage entries={ruleHelpYakuEntries} notes={ruleHelpScoringNotes} />,
       })
     } else {
       const estimatedPanelHeight = Math.min(ruleHelpViewport.height * 0.9, 780)
@@ -1973,7 +2003,7 @@ function App() {
       const yakuRowHeight = ruleHelpViewport.width <= 360 ? 114 : ruleHelpViewport.width <= 420 ? 106 : 100
       const estimatedRowsPerPage = Math.floor((estimatedPanelHeight - yakuChromeHeight) / yakuRowHeight)
       const yakuRowsPerPage = Math.max(2, Math.min(6, estimatedRowsPerPage))
-      const basicChunks = chunkYakuEntries(RULE_HELP_BASIC_YAKU_ENTRIES, yakuRowsPerPage)
+      const basicChunks = chunkYakuEntries(ruleHelpYakuEntries, yakuRowsPerPage)
 
       basicChunks.forEach((chunk, index) => {
         const totalPages = basicChunks.length
@@ -1991,7 +2021,7 @@ function App() {
       ...monthPages,
       ...yakuPages,
     ]
-  }, [ruleHelpScoringNotes, ruleHelpViewport.height, ruleHelpViewport.width, useMobileRuleHelpPagination])
+  }, [ruleHelpScoringNotes, ruleHelpYakuEntries, ruleHelpViewport.height, ruleHelpViewport.width, useMobileRuleHelpPagination])
   const currentRuleHelpPage = ruleHelpPages[ruleHelpPageIndex] ?? ruleHelpPages[0]
 
   useEffect(() => {
