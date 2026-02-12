@@ -1962,6 +1962,7 @@ function App() {
   const canEditLocalRules = !isLobbyConnected && (multiplayer.mode === 'cpu' || !hasMatchStarted)
   const canSelectRoundCount = !isLobbyConnected && (multiplayer.mode === 'cpu' || !hasMatchStarted)
   const hasEnabledYaku = hasAnyEnabledYaku(localRulesForPanel)
+  const startValidationMessage = '有効かつ1点以上の役が選択されていないため、対戦を開始できません。役一覧で役を有効化し、点数を1点以上に設定してください。'
   const isKoikoiDecisionSequencing = game.phase === 'koikoiDecision' && !isKoikoiDecisionChoiceVisible
   const koikoiEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'koikoi')
   const stopEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'stop')
@@ -4339,6 +4340,9 @@ function App() {
                     </div>
                   </div>
                 </div>
+                {!hasEnabledYaku ? (
+                  <p className="lobby-section-note" role="alert">{startValidationMessage}</p>
+                ) : null}
               </section>
 
               <MultiplayerLobby
@@ -4352,6 +4356,7 @@ function App() {
                 onJoinRoomIdChange={multiplayer.setJoinRoomId}
                 onStartHost={handleStartHost}
                 canStartMatch={hasEnabledYaku}
+                startValidationMessage={startValidationMessage}
                 onJoinGuest={handleJoinGuest}
                 onReconnect={() => multiplayer.reconnect(gameRef.current)}
                 onLeave={handleLeaveMultiplayer}
