@@ -332,18 +332,16 @@ export function LocalRulePanel(props: LocalRulePanelProps) {
                   }
                   disabled={!canEdit}
                 >
-                  <option value="none">倍率なし（従来）</option>
+                  <option value="none">倍率なし</option>
                   <option value="additive">加算式</option>
                   <option value="multiplicative">乗算式</option>
                 </select>
               </label>
             </div>
             <div className="local-rule-info-box">
-              <p className="local-rule-info-box-title">加算式と乗算式の違い</p>
-              <p className="local-rule-info-box-line">この方式は、こいこいだけでなく「7点以上」「自分/相手こいこい」など倍率計算全体に適用されます。</p>
-              <p className="local-rule-info-box-line">加算式: 基本点 × (1 + ボーナス数)</p>
-              <p className="local-rule-info-box-line">乗算式: 基本点 × 各倍率の積</p>
-              <p className="local-rule-info-box-line">例: 基本点5点・7点以上ボーナスあり・自分2倍/相手2倍（各1回） → 加算式20点 / 乗算式40点</p>
+              <p className="local-rule-info-box-line">倍率なし: ボーナス倍率を適用しない</p>
+              <p className="local-rule-info-box-line">加算: 基本点 × (1 + ボーナス数)</p>
+              <p className="local-rule-info-box-line">乗算: 基本点 × 各倍率の積</p>
             </div>
           </RuleSection>
 
