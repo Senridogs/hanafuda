@@ -589,6 +589,25 @@ function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly stri
   return notes
 }
 
+function hasAnyEnabledYaku(localRules: LocalRuleSettings): boolean {
+  return RULE_HELP_BASIC_YAKU_ENTRIES.some((entry) => {
+    const key = entry.key as YakuType
+    if (!localRules.yakuEnabled[key] || localRules.yakuPoints[key] <= 0) {
+      return false
+    }
+    if (key === 'shiten') {
+      return localRules.enableFourCardsYaku
+    }
+    if (key === 'hanami-zake') {
+      return localRules.enableHanamiZake
+    }
+    if (key === 'tsukimi-zake') {
+      return localRules.enableTsukimiZake
+    }
+    return true
+  })
+}
+
 function createCommandSeed(): number {
   return Math.floor(Math.random() * COMMAND_SEED_RANGE) >>> 0
 }
@@ -1967,6 +1986,7 @@ function App() {
   const isCpuRuleChangeDeferred = multiplayer.mode === 'cpu' && hasMatchStarted
   const canEditLocalRules = !isLobbyConnected && (multiplayer.mode === 'cpu' || !hasMatchStarted)
   const canSelectRoundCount = !isLobbyConnected && (multiplayer.mode === 'cpu' || !hasMatchStarted)
+  const hasEnabledYaku = hasAnyEnabledYaku(localRulesForPanel)
   const isKoikoiDecisionSequencing = game.phase === 'koikoiDecision' && !isKoikoiDecisionChoiceVisible
   const koikoiEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'koikoi')
   const stopEffectActive = turnDecisionCallouts.some((callout) => callout.kind === 'stop')
@@ -3758,6 +3778,9 @@ function App() {
   }, [])
 
   const handleSwitchToCpu = useCallback((): void => {
+    if (!hasEnabledYaku) {
+      return
+    }
     clearCpuCheckpoint()
     setIsMatchSurfaceVisible(true)
     setIsChromeCollapsed(true)
@@ -3771,7 +3794,7 @@ function App() {
       player1Name: DEFAULT_CONFIG.player1Name,
       player2Name: DEFAULT_CONFIG.player2Name,
     }))
-  }, [game.config, localRulesForPanel, multiplayer, resetTransientUiState, selectedRoundCount])
+  }, [game.config, hasEnabledYaku, localRulesForPanel, multiplayer, resetTransientUiState, selectedRoundCount])
 
   const handleChangeAiDifficulty = useCallback((difficulty: 'yowai' | 'futsuu' | 'tsuyoi' | 'yabai' | 'oni' | 'kami'): void => {
     if (multiplayer.mode !== 'cpu') {
@@ -3784,6 +3807,9 @@ function App() {
   }, [multiplayer.mode])
 
   const handleStartHost = useCallback((): void => {
+    if (!hasEnabledYaku) {
+      return
+    }
     clearCpuCheckpoint()
     setIsMatchSurfaceVisible(false)
     setIsChromeCollapsed(false)  // 部屋作成時はヘッダーを隠さない
@@ -3798,7 +3824,7 @@ function App() {
     })
     setGame(initial)
     multiplayer.startHost(initial, undefined, false)
-  }, [game.config, localRulesForPanel, multiplayer, resetTransientUiState, selectedRoundCount])
+  }, [game.config, hasEnabledYaku, localRulesForPanel, multiplayer, resetTransientUiState, selectedRoundCount])
 
   const handleJoinGuest = useCallback((): void => {
     clearCpuCheckpoint()
@@ -3902,6 +3928,7 @@ function App() {
         ...localRulesForPanel.yakuEnabled,
         [yakuType]: enabled,
       },
+      ...(yakuType === 'shiten' ? { enableFourCardsYaku: enabled } : {}),
       ...(yakuType === 'hanami-zake' ? { enableHanamiZake: enabled } : {}),
       ...(yakuType === 'tsukimi-zake' ? { enableTsukimiZake: enabled } : {}),
     })
@@ -4317,6 +4344,7 @@ function App() {
                     type="button"
                     className="cpu-start-button"
                     onClick={handleSwitchToCpu}
+                    disabled={!hasEnabledYaku}
                   >
                     CPU対戦
                   </button>
@@ -4347,6 +4375,7 @@ function App() {
                 joinRoomId={multiplayer.joinRoomId}
                 onJoinRoomIdChange={multiplayer.setJoinRoomId}
                 onStartHost={handleStartHost}
+                canStartMatch={hasEnabledYaku}
                 onJoinGuest={handleJoinGuest}
                 onReconnect={() => multiplayer.reconnect(gameRef.current)}
                 onLeave={handleLeaveMultiplayer}

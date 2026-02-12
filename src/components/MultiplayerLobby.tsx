@@ -11,6 +11,7 @@ interface MultiplayerLobbyProps {
   readonly joinRoomId: string
   readonly onJoinRoomIdChange: (value: string) => void
   readonly onStartHost: () => void
+  readonly canStartMatch?: boolean
   readonly onJoinGuest: () => void
   readonly onReconnect: () => void
   readonly onLeave: () => void
@@ -72,6 +73,7 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
     joinRoomId,
     onJoinRoomIdChange,
     onStartHost,
+    canStartMatch = true,
     onJoinGuest,
     onReconnect,
     onLeave,
@@ -83,7 +85,7 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
   const isHostMode = mode === 'p2p-host'
   const isConnectedSession = isMultiplayer && connectionStatus === 'connected'
   const isHostWaitingForGuest = isHostMode && connectionStatus !== 'connected'
-  const disableHostCreateButton = isMultiplayer
+  const disableHostCreateButton = isMultiplayer || !canStartMatch
   const disableJoinControls = isMultiplayer || isHostMode
   const canCopyRoomId = isHostWaitingForGuest && roomId.length > 0
   const [copiedRoomId, setCopiedRoomId] = useState<string | null>(null)
@@ -122,6 +124,7 @@ export function MultiplayerLobby(props: MultiplayerLobbyProps) {
 
       {isCpuMode ? (
         <div className="lobby-section">
+          {!canStartMatch ? <p className="lobby-section-note">有効な役が1つ以上必要です。役一覧で有効化してください。</p> : null}
           <p className="lobby-section-title">部屋を作成</p>
           <div className="lobby-row">
             <input

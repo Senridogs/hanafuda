@@ -145,6 +145,44 @@ describe('App interaction safeguards', () => {
     expect(cpuButton.disabled).toBe(false)
   })
 
+
+
+  it('allows toggling 四点役 from local rules', () => {
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'ローカルルール' }))
+    const shitenRow = screen.getByText('四点役').closest('.local-rule-yaku-item')
+    expect(shitenRow).toBeTruthy()
+    const shitenCheckbox = shitenRow?.querySelector('input[type="checkbox"]') as HTMLInputElement
+    const previous = shitenCheckbox.checked
+
+    fireEvent.click(shitenCheckbox)
+    expect(shitenCheckbox.checked).toBe(!previous)
+  })
+
+  it('disables match start buttons when no yaku is enabled', () => {
+    const { container } = render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'ローカルルール' }))
+    const yakuItems = Array.from(container.querySelectorAll('.local-rule-yaku-item'))
+    for (const item of yakuItems) {
+      const checkbox = item.querySelector('input[type="checkbox"]') as HTMLInputElement | null
+      if (checkbox?.checked) {
+        fireEvent.click(checkbox)
+      }
+    }
+
+    const closeButton = container.querySelector('.local-rule-close-button') as HTMLButtonElement | null
+    expect(closeButton).toBeTruthy()
+    fireEvent.click(closeButton as HTMLButtonElement)
+
+    const cpuButton = screen.getByRole('button', { name: 'CPU対戦' }) as HTMLButtonElement
+    const hostButton = screen.getByRole('button', { name: '部屋を作る' }) as HTMLButtonElement
+    expect(cpuButton.disabled).toBe(true)
+    expect(hostButton.disabled).toBe(true)
+    expect(screen.getByText('有効な役が1つ以上必要です。役一覧で有効化してください。')).toBeTruthy()
+  })
+
   it('shows current month indicator at top-left in mobile layout', () => {
     mockMatchMedia(true)
     render(<App />)
