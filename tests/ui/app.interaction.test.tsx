@@ -183,6 +183,34 @@ describe('App interaction safeguards', () => {
     expect(screen.getByText('有効な役が1つ以上必要です。役一覧で有効化してください。')).toBeTruthy()
   })
 
+
+  it('allows enabling 四点役 again after disabling all yaku', () => {
+    const { container } = render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'ローカルルール' }))
+    const yakuItems = Array.from(container.querySelectorAll('.local-rule-yaku-item'))
+    for (const item of yakuItems) {
+      const checkbox = item.querySelector('input[type="checkbox"]') as HTMLInputElement | null
+      if (checkbox?.checked) {
+        fireEvent.click(checkbox)
+      }
+    }
+
+    const shitenRow = screen.getByText('四点役').closest('.local-rule-yaku-item')
+    const shitenCheckbox = shitenRow?.querySelector('input[type="checkbox"]') as HTMLInputElement
+    expect(shitenCheckbox.checked).toBe(false)
+    fireEvent.click(shitenCheckbox)
+    expect(shitenCheckbox.checked).toBe(true)
+
+    const closeButton = container.querySelector('.local-rule-close-button') as HTMLButtonElement
+    fireEvent.click(closeButton)
+
+    const cpuButton = screen.getByRole('button', { name: 'CPU対戦' }) as HTMLButtonElement
+    const hostButton = screen.getByRole('button', { name: '部屋を作る' }) as HTMLButtonElement
+    expect(cpuButton.disabled).toBe(false)
+    expect(hostButton.disabled).toBe(false)
+  })
+
   it('shows current month indicator at top-left in mobile layout', () => {
     mockMatchMedia(true)
     render(<App />)

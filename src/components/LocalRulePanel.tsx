@@ -235,7 +235,13 @@ export function LocalRulePanel(props: LocalRulePanelProps) {
               {yakuFields.map((field) => {
                 const exampleCards = toCardExamples(field.exampleCardIds)
                 const point = localRules.yakuPoints[field.key]
-                const enabled = localRules.yakuEnabled[field.key]
+                const enabled = field.key === 'shiten'
+                  ? localRules.enableFourCardsYaku
+                  : field.key === 'hanami-zake'
+                    ? localRules.enableHanamiZake
+                    : field.key === 'tsukimi-zake'
+                      ? localRules.enableTsukimiZake
+                      : localRules.yakuEnabled[field.key]
                 const isHanami = field.key === 'hanami-zake'
                 const isTsukimi = field.key === 'tsukimi-zake'
 

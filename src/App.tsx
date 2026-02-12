@@ -321,21 +321,7 @@ function buildDynamicYakuEntries(
   entries: readonly RuleHelpYakuEntry[],
   localRules: LocalRuleSettings,
 ): RuleHelpYakuEntry[] {
-  const isEntryEnabled = (key: YakuType): boolean => {
-    if (!localRules.yakuEnabled[key] || localRules.yakuPoints[key] <= 0) {
-      return false
-    }
-    if (key === 'shiten') {
-      return localRules.enableFourCardsYaku
-    }
-    if (key === 'hanami-zake') {
-      return localRules.enableHanamiZake
-    }
-    if (key === 'tsukimi-zake') {
-      return localRules.enableTsukimiZake
-    }
-    return true
-  }
+  const isEntryEnabled = (key: YakuType): boolean => isEffectiveYakuEnabled(localRules, key)
 
   return entries
     .filter((entry) => {
@@ -589,23 +575,24 @@ function buildRuleHelpScoringNotes(localRules: LocalRuleSettings): readonly stri
   return notes
 }
 
+function isEffectiveYakuEnabled(localRules: LocalRuleSettings, key: YakuType): boolean {
+  if (!localRules.yakuEnabled[key] || localRules.yakuPoints[key] <= 0) {
+    return false
+  }
+  if (key === 'shiten') {
+    return localRules.enableFourCardsYaku
+  }
+  if (key === 'hanami-zake') {
+    return localRules.enableHanamiZake
+  }
+  if (key === 'tsukimi-zake') {
+    return localRules.enableTsukimiZake
+  }
+  return true
+}
+
 function hasAnyEnabledYaku(localRules: LocalRuleSettings): boolean {
-  return RULE_HELP_BASIC_YAKU_ENTRIES.some((entry) => {
-    const key = entry.key as YakuType
-    if (!localRules.yakuEnabled[key] || localRules.yakuPoints[key] <= 0) {
-      return false
-    }
-    if (key === 'shiten') {
-      return localRules.enableFourCardsYaku
-    }
-    if (key === 'hanami-zake') {
-      return localRules.enableHanamiZake
-    }
-    if (key === 'tsukimi-zake') {
-      return localRules.enableTsukimiZake
-    }
-    return true
-  })
+  return RULE_HELP_BASIC_YAKU_ENTRIES.some((entry) => isEffectiveYakuEnabled(localRules, entry.key as YakuType))
 }
 
 function createCommandSeed(): number {
