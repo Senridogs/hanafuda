@@ -70,21 +70,7 @@ export function calculateYaku(
   const normalizedRules = normalizeLocalRuleSettings(localRules)
   const points = normalizedRules.yakuPoints
   const enabled = normalizedRules.yakuEnabled
-  const isYakuEnabled = (type: Yaku['type']): boolean => {
-    if (!enabled[type] || points[type] <= 0) {
-      return false
-    }
-    if (type === 'shiten') {
-      return normalizedRules.enableFourCardsYaku
-    }
-    if (type === 'hanami-zake') {
-      return normalizedRules.enableHanamiZake
-    }
-    if (type === 'tsukimi-zake') {
-      return normalizedRules.enableTsukimiZake
-    }
-    return true
-  }
+  const isYakuEnabled = (type: Yaku['type']): boolean => enabled[type] && points[type] > 0
   const yaku: Yaku[] = []
   const hikariCards = capturedCards.filter((card) => card.type === 'hikari')
   const taneCards = capturedCards.filter((card) => card.type === 'tane')
