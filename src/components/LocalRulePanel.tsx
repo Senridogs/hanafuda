@@ -511,9 +511,10 @@ export function LocalRulePanel(props: LocalRulePanelProps) {
                 </div>
               </div>
             </div>
-            <p className="local-rule-setting-help">
-              勝負が決まるまでを選ぶと、規定月以降は同点のあいだ自動で延長します。延長を無効にすると延長方式/回数は適用されません。
-            </p>
+            <div className="local-rule-info-box">
+              <p className="local-rule-info-box-line">回数指定: 指定した回数だけ延長する</p>
+              <p className="local-rule-info-box-line">勝負が決まるまで: 同点のあいだ自動で延長する</p>
+            </div>
           </RuleSection>
         </div>
 
