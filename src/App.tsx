@@ -3902,6 +3902,8 @@ function App() {
         ...localRulesForPanel.yakuEnabled,
         [yakuType]: enabled,
       },
+      ...(yakuType === 'hanami-zake' ? { enableHanamiZake: enabled } : {}),
+      ...(yakuType === 'tsukimi-zake' ? { enableTsukimiZake: enabled } : {}),
     })
 
     if (!enabled) {
