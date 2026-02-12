@@ -332,18 +332,16 @@ export function LocalRulePanel(props: LocalRulePanelProps) {
                   }
                   disabled={!canEdit}
                 >
-                  <option value="none">倍率なし（従来）</option>
+                  <option value="none">倍率なし</option>
                   <option value="additive">加算式</option>
                   <option value="multiplicative">乗算式</option>
                 </select>
               </label>
             </div>
             <div className="local-rule-info-box">
-              <p className="local-rule-info-box-title">加算式と乗算式の違い</p>
-              <p className="local-rule-info-box-line">この方式は、こいこいだけでなく「7点以上」「自分/相手こいこい」など倍率計算全体に適用されます。</p>
-              <p className="local-rule-info-box-line">加算式: 基本点 × (1 + ボーナス数)</p>
-              <p className="local-rule-info-box-line">乗算式: 基本点 × 各倍率の積</p>
-              <p className="local-rule-info-box-line">例: 基本点5点・7点以上ボーナスあり・自分2倍/相手2倍（各1回） → 加算式20点 / 乗算式40点</p>
+              <p className="local-rule-info-box-line">倍率なし: ボーナス倍率を適用しない</p>
+              <p className="local-rule-info-box-line">加算: 基本点 × (1 + ボーナス数)</p>
+              <p className="local-rule-info-box-line">乗算: 基本点 × 各倍率の積</p>
             </div>
           </RuleSection>
 
@@ -392,15 +390,16 @@ export function LocalRulePanel(props: LocalRulePanelProps) {
                   value={localRules.koikoiLimit}
                   min={0}
                   max={12}
-                  disabled={!canEdit || !usesMultiplierMode || !localRules.enableKoiKoiShowdown}
+                  disabled={!canEdit || !localRules.enableKoiKoiShowdown}
                   onChange={onChangeKoikoiLimit}
                 />
               </div>
             </div>
-            <p className="local-rule-setting-help">
-              デフォルトでは「こいこい後に次の役が出たら上がり確定」です。こいこい合戦を有効にすると、互いにこいこいを続けられます。
-              倍率なしは加算/乗算を行わない旧仕様です。上限数は「こいこい合戦 + 加算式/乗算式」のときだけ有効です（0で上限なし）。
-            </p>
+            <div className="local-rule-info-box">
+              <p className="local-rule-info-box-line">合戦OFF: こいこい後に次の役が出たら上がり確定</p>
+              <p className="local-rule-info-box-line">合戦ON: 互いにこいこいを続けられる</p>
+              <p className="local-rule-info-box-line">上限数: 合戦ON時のみ有効（0で上限なし）</p>
+            </div>
           </RuleSection>
 
           <RuleSection
@@ -463,7 +462,10 @@ export function LocalRulePanel(props: LocalRulePanelProps) {
                 </div>
               </div>
             </div>
-            <p className="local-rule-setting-help">親点/子点は「親子点数」のときだけ有効です。こいこい後に役が成立して上がる場合は、この設定ではなく成立役点にこいこい倍率を適用します。</p>
+            <div className="local-rule-info-box">
+              <p className="local-rule-info-box-line">双方0点: 役なし時は両者0点</p>
+              <p className="local-rule-info-box-line">親子点数: 役なし時に親点/子点を適用</p>
+            </div>
           </RuleSection>
 
           <RuleSection
@@ -509,9 +511,10 @@ export function LocalRulePanel(props: LocalRulePanelProps) {
                 </div>
               </div>
             </div>
-            <p className="local-rule-setting-help">
-              勝負が決まるまでを選ぶと、規定月以降は同点のあいだ自動で延長します。延長を無効にすると延長方式/回数は適用されません。
-            </p>
+            <div className="local-rule-info-box">
+              <p className="local-rule-info-box-line">回数指定: 指定した回数だけ延長する</p>
+              <p className="local-rule-info-box-line">勝負が決まるまで: 同点のあいだ自動で延長する</p>
+            </div>
           </RuleSection>
         </div>
 

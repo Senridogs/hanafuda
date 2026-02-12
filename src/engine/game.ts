@@ -711,7 +711,7 @@ function evaluateRoundAfterTurn(state: KoiKoiGameState): KoiKoiGameState {
 
 function isKoiKoiLimitEnabled(state: KoiKoiGameState): boolean {
   const localRules = normalizeGameConfig(state.config).localRules
-  return localRules.enableKoiKoiShowdown && localRules.koiKoiBonusMode !== 'none' && localRules.koikoiLimit > 0
+  return localRules.enableKoiKoiShowdown && localRules.koikoiLimit > 0
 }
 
 function canDeclareKoiKoi(state: KoiKoiGameState, playerIndex: 0 | 1): boolean {
