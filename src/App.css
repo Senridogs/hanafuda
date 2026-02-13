@@ -2753,6 +2753,220 @@ button:hover {
   }
 }
 
+.match-record-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1405;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgb(2 7 12 / 64%);
+}
+
+.match-record-panel {
+  width: min(960px, calc(100vw - 24px));
+  max-height: min(90dvh, 900px);
+  border-radius: 16px;
+  border: 1px solid rgb(255 223 179 / 26%);
+  background: linear-gradient(180deg, rgb(9 15 22 / 94%), rgb(14 22 34 / 96%));
+  box-shadow: 0 24px 40px rgb(0 0 0 / 44%);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.match-record-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgb(255 223 179 / 16%);
+}
+
+.match-record-panel-title h2 {
+  margin: 0;
+  font-size: 0.96rem;
+  color: #f3dfbe;
+}
+
+.match-record-panel-title p {
+  margin: 4px 0 0;
+  font-size: 0.74rem;
+  color: #c7c0b0;
+}
+
+.match-record-panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.match-record-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.match-record-empty {
+  margin: 0;
+  padding: 24px 10px;
+  text-align: center;
+  font-size: 0.82rem;
+  color: #d8cfbe;
+}
+
+.match-record-row {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgb(255 223 179 / 18%);
+  background: rgb(0 0 0 / 22%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.match-record-row:hover {
+  border-color: rgb(255 200 140 / 35%);
+  background: rgb(255 223 179 / 12%);
+}
+
+.match-record-row-opponent {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
+  color: #f2e6cf;
+}
+
+.match-record-row-round {
+  font-size: 0.76rem;
+  color: #cfc4af;
+}
+
+.match-record-row-result {
+  min-width: 64px;
+  text-align: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 223 179 / 20%);
+}
+
+.match-record-row-result.win,
+.match-record-detail-result.win {
+  color: #ffe6b8;
+  border-color: rgb(255 190 124 / 40%);
+  background: rgb(255 164 76 / 16%);
+}
+
+.match-record-row-result.loss,
+.match-record-detail-result.loss {
+  color: #cfd6e8;
+  border-color: rgb(176 190 220 / 32%);
+  background: rgb(120 136 166 / 16%);
+}
+
+.match-record-row-result.draw,
+.match-record-detail-result.draw {
+  color: #d8dbc8;
+  border-color: rgb(210 210 180 / 30%);
+  background: rgb(160 160 120 / 16%);
+}
+
+.match-record-detail {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.match-record-detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: #d8cfbe;
+}
+
+.match-record-detail-opponent {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #f2e6cf;
+}
+
+.match-record-detail-result {
+  min-width: 74px;
+  text-align: center;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 223 179 / 20%);
+}
+
+@media (max-width: 720px) {
+  .match-record-overlay {
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+  }
+
+  .match-record-panel {
+    width: min(440px, calc(100vw - 16px));
+    max-height: min(68dvh, 560px);
+    border-radius: 14px;
+  }
+
+  .match-record-panel-head {
+    padding: 10px 10px 8px;
+  }
+
+  .match-record-panel-head-actions {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .match-record-list,
+  .match-record-detail {
+    padding: 10px;
+  }
+
+  .match-record-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "opponent result"
+      "round result";
+    row-gap: 4px;
+  }
+
+  .match-record-row-opponent {
+    grid-area: opponent;
+  }
+
+  .match-record-row-round {
+    grid-area: round;
+  }
+
+  .match-record-row-result {
+    grid-area: result;
+  }
+}
+
 .rule-help-fab {
   position: fixed;
   left: calc(var(--app-safe-padding) + 2px);

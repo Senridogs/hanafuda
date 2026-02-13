@@ -3,19 +3,24 @@ import { createNewGame } from '../../src/engine/game'
 import {
   CHECKPOINT_TTL_MS,
   CPU_CHECKPOINT_TTL_MS,
+  MATCH_RECORD_KEY,
   PREFERRED_ROUND_COUNT_KEY,
+  clearMatchRecords,
   clearCpuCheckpoint,
   clearCheckpoint,
   loadCpuCheckpoint,
   loadLastGuestRoomId,
   loadLastHostRoomId,
   loadCheckpoint,
+  loadMatchRecords,
   loadPreferredRoundCount,
+  recordMatchResult,
   saveCpuCheckpoint,
   saveCheckpoint,
   saveLastGuestRoomId,
   saveLastHostRoomId,
   savePreferredRoundCount,
+  type MatchRecordInput,
   type CpuCheckpointPayload,
   type CheckpointPayload,
 } from '../../src/net/persistence'
@@ -23,6 +28,7 @@ import {
 const ROOM_ID = 'room-001'
 const HOST_STORAGE_KEY = `hanafuda:p2p:checkpoint:host:${ROOM_ID}`
 const CPU_STORAGE_KEY = 'hanafuda:cpu:checkpoint'
+const LEGACY_MATCH_RECORD_KEY = 'hanafuda:match-records'
 
 function createPayload(overrides: Partial<CheckpointPayload> = {}): CheckpointPayload {
   return {
@@ -39,6 +45,30 @@ function createCpuPayload(overrides: Partial<CpuCheckpointPayload> = {}): CpuChe
     state: createNewGame(),
     updatedAt: Date.now(),
     isMatchSurfaceVisible: true,
+    ...overrides,
+  }
+}
+
+function createMatchRecordInput(overrides: Partial<MatchRecordInput> = {}): MatchRecordInput {
+  return {
+    mode: 'cpu',
+    opponentName: 'COM（ふつう）',
+    maxRounds: 6,
+    playedRounds: 6,
+    result: 'win',
+    localPlayerId: 'player1',
+    player1Name: 'あなた',
+    player2Name: 'COM',
+    player1Score: 18,
+    player2Score: 9,
+    roundScoreHistory: [
+      { round: 1, player1Points: 6, player2Points: 0 },
+      { round: 2, player1Points: 0, player2Points: 3 },
+      { round: 3, player1Points: 6, player2Points: 0 },
+      { round: 4, player1Points: 0, player2Points: 3 },
+      { round: 5, player1Points: 3, player2Points: 0 },
+      { round: 6, player1Points: 3, player2Points: 0 },
+    ],
     ...overrides,
   }
 }
@@ -188,5 +218,50 @@ describe('preferred round count persistence', () => {
   it('rejects invalid values safely', () => {
     localStorage.setItem(PREFERRED_ROUND_COUNT_KEY, JSON.stringify({ roundCount: 5 }))
     expect(loadPreferredRoundCount()).toBeNull()
+  })
+})
+
+describe('match record persistence', () => {
+  it('records and loads match history in descending completed order', () => {
+    const first = recordMatchResult(createMatchRecordInput({
+      completedAt: new Date('2026-02-10T10:00:00.000Z').getTime(),
+      result: 'loss',
+    }))
+    const second = recordMatchResult(createMatchRecordInput({
+      completedAt: new Date('2026-02-11T10:00:00.000Z').getTime(),
+      result: 'win',
+    }))
+
+    const loaded = loadMatchRecords()
+    expect(first).not.toBeNull()
+    expect(second).not.toBeNull()
+    expect(loaded).toHaveLength(2)
+    expect(loaded[0]?.result).toBe('win')
+    expect(loaded[1]?.result).toBe('loss')
+  })
+
+  it('clears stored match records', () => {
+    recordMatchResult(createMatchRecordInput())
+    clearMatchRecords()
+    expect(loadMatchRecords()).toEqual([])
+  })
+
+  it('migrates legacy array payload safely', () => {
+    const legacyEntry = {
+      ...createMatchRecordInput(),
+      id: 'legacy-id-1',
+      completedAt: Date.now(),
+    }
+    localStorage.setItem(LEGACY_MATCH_RECORD_KEY, JSON.stringify([legacyEntry]))
+
+    const loaded = loadMatchRecords()
+    expect(loaded).toHaveLength(1)
+    expect(loaded[0]?.id).toBe('legacy-id-1')
+    expect(localStorage.getItem(MATCH_RECORD_KEY)).not.toBeNull()
+  })
+
+  it('ignores malformed match payload safely', () => {
+    localStorage.setItem(MATCH_RECORD_KEY, '{broken-json')
+    expect(loadMatchRecords()).toEqual([])
   })
 })
