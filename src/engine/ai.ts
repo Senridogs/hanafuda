@@ -1201,10 +1201,6 @@ interface GamblerPersonality {
 const ONI_PERSONALITY: GamblerPersonality = {
   base: 0.20, scale: 1.0, noise: 0.10, maxKoikoi: 2, yakuCeiling: 7, potCommit: 0.04,
 }
-const KAMI_PERSONALITY: GamblerPersonality = {
-  base: 0.40, scale: 1.4, noise: 0.22, maxKoikoi: 3, yakuCeiling: 9, potCommit: 0.14,
-}
-
 function computeGambleDesire(state: KoiKoiGameState, p: GamblerPersonality): number {
   const playerIndex = state.currentPlayerIndex
   const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
@@ -1409,11 +1405,8 @@ export function chooseAiKoiKoi(state: KoiKoiGameState): KoiKoiDecision {
       return chooseKoiKoi_Yabai(state)
     case 'oni':
       return chooseKoiKoi_Oni(state)
-    case 'kami': {
-      const base = chooseKoiKoi_Kami(state)
-      if (base === 'stop' && Math.random() < computeGambleDesire(state, KAMI_PERSONALITY)) return 'koikoi'
-      return base
-    }
+    case 'kami':
+      return chooseKoiKoi_Oni(state)
     default:
       return chooseKoiKoi_Futsuu(state)
   }
