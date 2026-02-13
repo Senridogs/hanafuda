@@ -1126,8 +1126,43 @@ function chooseKoiKoi_Yabai(state: KoiKoiGameState): KoiKoiDecision {
   return chooseKoiKoi_Kami(state)
 }
 
+function shouldGambleKoiKoi(
+  state: KoiKoiGameState,
+  gambleRate: { overconfidence: number; desperation: number; hotBonus: number },
+): boolean {
+  const playerIndex = state.currentPlayerIndex
+  const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
+  const player = state.players[playerIndex]
+  const opponent = state.players[opponentIndex]
+  const mood = resolveAiRoundMood(state)
+  const stopPoints = estimateStopRoundPoints(state, playerIndex)
+  const lead = (player.score + stopPoints) - opponent.score
+  const turnsLeft = Math.max(0, player.hand.length)
+
+  if (state.koikoiCounts[playerIndex] >= 2 || turnsLeft <= 1) {
+    return false
+  }
+
+  const hotBonus = mood === 'hot' ? gambleRate.hotBonus : 0
+
+  if (lead >= 8 && stopPoints <= 5 && state.round < state.config.maxRounds) {
+    return Math.random() < gambleRate.overconfidence + hotBonus
+  }
+
+  const deficit = opponent.score - player.score
+  if (deficit >= 12 && stopPoints <= 4) {
+    return Math.random() < gambleRate.desperation + hotBonus
+  }
+
+  return false
+}
+
 function chooseKoiKoi_Oni(state: KoiKoiGameState): KoiKoiDecision {
-  return chooseKoiKoi_Kami(state)
+  const base = chooseKoiKoi_Kami(state)
+  if (base === 'stop' && shouldGambleKoiKoi(state, { overconfidence: 0.22, desperation: 0.30, hotBonus: 0.10 })) {
+    return 'koikoi'
+  }
+  return base
 }
 
 function chooseKoiKoi_Kami(state: KoiKoiGameState): KoiKoiDecision {
@@ -1235,8 +1270,13 @@ export function chooseAiKoiKoi(state: KoiKoiGameState): KoiKoiDecision {
       return chooseKoiKoi_Yabai(state)
     case 'oni':
       return chooseKoiKoi_Oni(state)
-    case 'kami':
-      return chooseKoiKoi_Kami(state)
+    case 'kami': {
+      const base = chooseKoiKoi_Kami(state)
+      if (base === 'stop' && shouldGambleKoiKoi(state, { overconfidence: 0.35, desperation: 0.45, hotBonus: 0.15 })) {
+        return 'koikoi'
+      }
+      return base
+    }
     default:
       return chooseKoiKoi_Futsuu(state)
   }
