@@ -1133,7 +1133,54 @@ function chooseKoiKoi_TsuyoiAdvanced(state: KoiKoiGameState): KoiKoiDecision {
 }
 
 function chooseKoiKoi_Yabai(state: KoiKoiGameState): KoiKoiDecision {
-  return chooseKoiKoi_Kami(state)
+  const base = chooseKoiKoi_TsuyoiAdvanced(state)
+  const playerIndex = state.currentPlayerIndex
+  const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
+  const player = state.players[playerIndex]
+  const opponent = state.players[opponentIndex]
+  const stopPoints = estimateStopRoundPoints(state, playerIndex)
+  const leadIfStop = player.score + stopPoints - opponent.score
+  const turnsLeft = Math.max(0, player.hand.length)
+  const opponentStopPressure = estimateStopRoundPoints(state, opponentIndex)
+  const deckRemainingRatio = Math.min(1, state.deck.length / 16)
+
+  if (state.round >= state.config.maxRounds) {
+    return leadIfStop > 0 ? 'stop' : 'koikoi'
+  }
+
+  if (state.koikoiCounts[playerIndex] >= 2) {
+    return 'stop'
+  }
+
+  if (stopPoints >= 6) {
+    return 'stop'
+  }
+
+  if (leadIfStop >= 6 && stopPoints >= 3) {
+    return 'stop'
+  }
+
+  if (opponentStopPressure >= 8 && stopPoints >= 2) {
+    return 'stop'
+  }
+
+  if (base === 'stop') {
+    return 'stop'
+  }
+
+  if (turnsLeft <= 1) {
+    return stopPoints >= 1 ? 'stop' : 'koikoi'
+  }
+
+  if (deckRemainingRatio < 0.38 && stopPoints >= 2) {
+    return 'stop'
+  }
+
+  if (leadIfStop <= -10 && turnsLeft >= 2 && stopPoints <= 4) {
+    return 'koikoi'
+  }
+
+  return base
 }
 
 // ---------------------------------------------------------------------------
