@@ -40,23 +40,17 @@ const DIFFICULTY_SEED_OFFSET: Record<GameConfig['aiDifficulty'], number> = {
   kami: 89,
 }
 
+const ONI_CPU_ASSIST_PROFILE: CpuAssistProfile = {
+  openingMargin: 5,
+  maxExtraRetries: 16,
+  drawSearchWindow: 2,
+  drawRigChance: 0.20,
+  openingBias: 'favor-ai',
+  drawBias: 'best',
+}
+
 const CPU_ASSIST_BY_DIFFICULTY: Partial<Record<GameConfig['aiDifficulty'], CpuAssistProfile>> = {
-  oni: {
-    openingMargin: 5,
-    maxExtraRetries: 16,
-    drawSearchWindow: 2,
-    drawRigChance: 0.20,
-    openingBias: 'favor-ai',
-    drawBias: 'best',
-  },
-  kami: {
-    openingMargin: 7,
-    maxExtraRetries: 22,
-    drawSearchWindow: 2,
-    drawRigChance: 0.26,
-    openingBias: 'favor-ai',
-    drawBias: 'best',
-  },
+  kami: ONI_CPU_ASSIST_PROFILE,
 }
 
 function clamp(value: number, min: number, max: number): number {

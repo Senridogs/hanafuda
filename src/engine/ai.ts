@@ -38,6 +38,7 @@ interface SearchProfile {
   readonly twoPlyWeight: number
   readonly reboundWeight: number
   readonly usePerfectInfo: boolean
+  readonly peekDeckTop: boolean
   readonly knownTurnPressureWeight: number
   readonly handPotentialWeight: number
   readonly topN: number
@@ -55,6 +56,7 @@ const TSUYOI_PROFILE: SearchProfile = {
   twoPlyWeight: 0.11,
   reboundWeight: 0.54,
   usePerfectInfo: false,
+  peekDeckTop: false,
   knownTurnPressureWeight: 0,
   handPotentialWeight: 0.29,
   topN: 2,
@@ -71,15 +73,21 @@ const YABAI_PROFILE: SearchProfile = {
   opponentReplySamples: 24,
   twoPlyWeight: 0.24,
   reboundWeight: 0.85,
-  usePerfectInfo: true,
-  knownTurnPressureWeight: 0.62,
+  usePerfectInfo: false,
+  peekDeckTop: false,
+  knownTurnPressureWeight: 0,
   handPotentialWeight: 0.82,
   topN: 1,
 }
 
-const ONI_PROFILE: SearchProfile = YABAI_PROFILE
+const ONI_PROFILE: SearchProfile = {
+  ...YABAI_PROFILE,
+  usePerfectInfo: true,
+  peekDeckTop: false,
+  knownTurnPressureWeight: 0.62,
+}
 
-const KAMI_PROFILE: SearchProfile = YABAI_PROFILE
+const KAMI_PROFILE: SearchProfile = ONI_PROFILE
 
 interface HandStepOutcome {
   readonly chosenMatch: HanafudaCard | null
@@ -423,7 +431,7 @@ function estimateOpponentKnownTurnPressure(
     const handStep = simulateBestImmediateHandCapture(fieldBeforeOpponentTurn, opponent.captured, handCard)
     const handGain = evaluateImmediateCaptureGain(oppCapturedBaseScore, oppFieldBaseDanger, handStep)
 
-    const drawCard = state.deck[opponentDrawDeckOffset]
+    const drawCard = profile.peekDeckTop ? state.deck[opponentDrawDeckOffset] : undefined
     let fieldAfterTurn = handStep.fieldAfter
     let capturedAfterTurn = handStep.capturedAfter
     let drawGain = 0
@@ -662,7 +670,7 @@ function evaluateHandOutcome(
   const immediateCardGain = outcome.capturedNow.reduce((sum, card) => sum + tacticalCardValue(card), 0)
 
   const remainingHand = aiPlayer.hand.filter((card) => card.id !== handCard.id)
-  const drawProjection = profile.usePerfectInfo
+  const drawProjection = profile.peekDeckTop
     ? projectDeterministicTopDraw(state.deck, outcome.fieldAfter, outcome.capturedAfter)
     : {
       gain: estimateDrawExpectation(
@@ -683,6 +691,9 @@ function evaluateHandOutcome(
   const drawExpectation = drawProjection.gain
   const fieldRisk = evaluateFieldDanger(fieldAfterOwnTurn)
   const opponentThreat = estimateOpponentCaptureThreat(fieldAfterOwnTurn, drawCandidates)
+  const deckRemainingRatio = Math.min(1, state.deck.length / 16)
+  const immediatePhaseWeight = 1.08 + (1 - deckRemainingRatio) * 0.52
+  const futurePhaseWeight = 0.72 + deckRemainingRatio * 0.48
 
   const opponentReplyPressure = profile.usePerfectInfo
     ? 0
@@ -719,14 +730,14 @@ function evaluateHandOutcome(
   const stopPotential = stopPoints * 18
 
   return capturedDelta * profile.immediateProgressWeight
-    + immediateCardGain * profile.immediateCaptureWeight
-    + drawExpectation * profile.drawExpectationWeight
-    + futureHandPotential * profile.handPotentialWeight
+    + immediateCardGain * profile.immediateCaptureWeight * immediatePhaseWeight
+    + drawExpectation * profile.drawExpectationWeight * immediatePhaseWeight
+    + futureHandPotential * profile.handPotentialWeight * futurePhaseWeight
     + stopPotential
     - fieldRisk * profile.fieldRiskWeight
-    - opponentThreat * profile.opponentThreatWeight
-    - opponentReplyPressure * profile.opponentReplyWeight
-    - twoPlyPressure * profile.twoPlyWeight
+    - opponentThreat * profile.opponentThreatWeight * immediatePhaseWeight
+    - opponentReplyPressure * profile.opponentReplyWeight * immediatePhaseWeight
+    - twoPlyPressure * profile.twoPlyWeight * immediatePhaseWeight
     - knownTurnPressure * profile.knownTurnPressureWeight
 }
 
@@ -867,7 +878,7 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
   const capturedAfter = evaluateCapturedStrength(simulated.capturedAfter)
   const capturedDelta = capturedAfter - capturedBefore
   const immediateCardGain = simulated.capturedNow.reduce((sum, card) => sum + tacticalCardValue(card), 0)
-  const drawProjection = profile.usePerfectInfo && state.pendingSource === 'hand'
+  const drawProjection = profile.peekDeckTop && state.pendingSource === 'hand'
     ? projectDeterministicTopDraw(state.deck, simulated.fieldAfter, simulated.capturedAfter)
     : {
       gain: 0,
@@ -914,23 +925,26 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
     state.koikoiCounts[opponentIndex] > 0,
   )
   const stopPotential = stopPoints * 18
+  const deckRemainingRatio = Math.min(1, state.deck.length / 16)
+  const immediatePhaseWeight = 1.08 + (1 - deckRemainingRatio) * 0.52
+  const futurePhaseWeight = 0.72 + deckRemainingRatio * 0.48
 
   let score = capturedDelta * profile.immediateProgressWeight
-    + immediateCardGain * profile.immediateCaptureWeight
+    + immediateCardGain * profile.immediateCaptureWeight * immediatePhaseWeight
     + stopPotential
     - fieldRisk * profile.fieldRiskWeight
-    - opponentThreat * profile.opponentThreatWeight
-    - opponentReplyPressure * profile.opponentReplyWeight
-    - twoPlyPressure * profile.twoPlyWeight
+    - opponentThreat * profile.opponentThreatWeight * immediatePhaseWeight
+    - opponentReplyPressure * profile.opponentReplyWeight * immediatePhaseWeight
+    - twoPlyPressure * profile.twoPlyWeight * immediatePhaseWeight
     - knownTurnPressure * profile.knownTurnPressureWeight
 
   if (state.pendingSource === 'hand') {
     const handPotential = evaluateFutureHandPotential(aiPlayer.hand, fieldAfterOwnTurn)
-    const drawExpectation = profile.usePerfectInfo
+    const drawExpectation = profile.peekDeckTop
       ? drawProjection.gain
       : estimateDrawExpectation(drawCandidates, simulated.fieldAfter, simulated.capturedAfter, profile)
-    score += handPotential * profile.handPotentialWeight
-    score += drawExpectation * profile.drawExpectationWeight
+    score += handPotential * profile.handPotentialWeight * futurePhaseWeight
+    score += drawExpectation * profile.drawExpectationWeight * immediatePhaseWeight
   }
 
   return score
@@ -1123,7 +1137,54 @@ function chooseKoiKoi_TsuyoiAdvanced(state: KoiKoiGameState): KoiKoiDecision {
 }
 
 function chooseKoiKoi_Yabai(state: KoiKoiGameState): KoiKoiDecision {
-  return chooseKoiKoi_Kami(state)
+  const base = chooseKoiKoi_TsuyoiAdvanced(state)
+  const playerIndex = state.currentPlayerIndex
+  const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
+  const player = state.players[playerIndex]
+  const opponent = state.players[opponentIndex]
+  const stopPoints = estimateStopRoundPoints(state, playerIndex)
+  const leadIfStop = player.score + stopPoints - opponent.score
+  const turnsLeft = Math.max(0, player.hand.length)
+  const opponentStopPressure = estimateStopRoundPoints(state, opponentIndex)
+  const deckRemainingRatio = Math.min(1, state.deck.length / 16)
+
+  if (state.round >= state.config.maxRounds) {
+    return leadIfStop > 0 ? 'stop' : 'koikoi'
+  }
+
+  if (state.koikoiCounts[playerIndex] >= 2) {
+    return 'stop'
+  }
+
+  if (stopPoints >= 6) {
+    return 'stop'
+  }
+
+  if (leadIfStop >= 6 && stopPoints >= 3) {
+    return 'stop'
+  }
+
+  if (opponentStopPressure >= 8 && stopPoints >= 2) {
+    return 'stop'
+  }
+
+  if (base === 'stop') {
+    return 'stop'
+  }
+
+  if (turnsLeft <= 1) {
+    return stopPoints >= 1 ? 'stop' : 'koikoi'
+  }
+
+  if (deckRemainingRatio < 0.38 && stopPoints >= 2) {
+    return 'stop'
+  }
+
+  if (leadIfStop <= -10 && turnsLeft >= 2 && stopPoints <= 4) {
+    return 'koikoi'
+  }
+
+  return base
 }
 
 // ---------------------------------------------------------------------------
@@ -1144,10 +1205,6 @@ interface GamblerPersonality {
 const ONI_PERSONALITY: GamblerPersonality = {
   base: 0.20, scale: 1.0, noise: 0.10, maxKoikoi: 2, yakuCeiling: 7, potCommit: 0.04,
 }
-const KAMI_PERSONALITY: GamblerPersonality = {
-  base: 0.40, scale: 1.4, noise: 0.22, maxKoikoi: 3, yakuCeiling: 9, potCommit: 0.14,
-}
-
 function computeGambleDesire(state: KoiKoiGameState, p: GamblerPersonality): number {
   const playerIndex = state.currentPlayerIndex
   const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
@@ -1352,11 +1409,8 @@ export function chooseAiKoiKoi(state: KoiKoiGameState): KoiKoiDecision {
       return chooseKoiKoi_Yabai(state)
     case 'oni':
       return chooseKoiKoi_Oni(state)
-    case 'kami': {
-      const base = chooseKoiKoi_Kami(state)
-      if (base === 'stop' && Math.random() < computeGambleDesire(state, KAMI_PERSONALITY)) return 'koikoi'
-      return base
-    }
+    case 'kami':
+      return chooseKoiKoi_Oni(state)
     default:
       return chooseKoiKoi_Futsuu(state)
   }
