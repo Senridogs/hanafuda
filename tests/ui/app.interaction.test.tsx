@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../../src/App'
 import { START_MATCH_VALIDATION_MESSAGE } from '../../src/constants/validationMessages'
 import { createNewGame, getMatchingFieldCards } from '../../src/engine/game'
 
 const originalMatchMedia = window.matchMedia
+const MATCH_RECORD_KEY = 'hanafuda:match-records:v1'
 
 function mockMatchMedia(matches: boolean): void {
   const mock = vi.fn().mockImplementation((query: string) => ({
@@ -49,6 +50,37 @@ function withSeededRandom<T>(seed: number, run: () => T): T {
 function startCpuMatch(roundCount: 3 | 6 | 12 = 3): void {
   fireEvent.click(screen.getByRole('button', { name: `${roundCount}月` }))
   fireEvent.click(screen.getByRole('button', { name: 'CPU対戦' }))
+}
+
+function seedMatchRecord(): void {
+  window.localStorage.setItem(MATCH_RECORD_KEY, JSON.stringify({
+    version: 1,
+    updatedAt: Date.now(),
+    records: [
+      {
+        id: 'record-001',
+        mode: 'cpu',
+        opponentName: 'COM（ふつう）',
+        maxRounds: 6,
+        playedRounds: 6,
+        result: 'win',
+        localPlayerId: 'player1',
+        player1Name: 'あなた',
+        player2Name: 'COM',
+        player1Score: 18,
+        player2Score: 9,
+        roundScoreHistory: [
+          { round: 1, player1Points: 6, player2Points: 0 },
+          { round: 2, player1Points: 0, player2Points: 3 },
+          { round: 3, player1Points: 6, player2Points: 0 },
+          { round: 4, player1Points: 0, player2Points: 3 },
+          { round: 5, player1Points: 3, player2Points: 0 },
+          { round: 6, player1Points: 3, player2Points: 0 },
+        ],
+        completedAt: Date.now(),
+      },
+    ],
+  }))
 }
 
 type OpeningPattern = {
@@ -122,11 +154,18 @@ function findNoMatchPattern(maxSeed = 20000): NoMatchPattern {
 
 afterEach(() => {
   vi.useRealTimers()
+  window.localStorage.clear()
+  window.sessionStorage.clear()
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,
     writable: true,
     value: originalMatchMedia,
   })
+})
+
+beforeEach(() => {
+  window.localStorage.clear()
+  window.sessionStorage.clear()
 })
 
 describe('App interaction safeguards', () => {
@@ -159,6 +198,27 @@ describe('App interaction safeguards', () => {
 
     fireEvent.click(shitenCheckbox)
     expect(shitenCheckbox.checked).toBe(!previous)
+  })
+
+  it('opens match-record panel and transitions list -> detail -> list', () => {
+    seedMatchRecord()
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('button', { name: '戦績' }))
+    expect(screen.getByRole('heading', { name: '戦績一覧' })).toBeTruthy()
+    const list = screen.getByLabelText('戦績一覧')
+    expect(within(list).getByText('COM（ふつう）')).toBeTruthy()
+    expect(within(list).getByText('6月')).toBeTruthy()
+    expect(within(list).getByText('勝ち')).toBeTruthy()
+
+    fireEvent.click(within(list).getByRole('button', { name: /COM（ふつう）/ }))
+    expect(screen.getByRole('heading', { name: '戦績詳細' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: '戦績一覧' })).toBeNull()
+    expect(screen.getByRole('button', { name: '一覧へ戻る' })).toBeTruthy()
+    expect(screen.getByText('合計')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '一覧へ戻る' }))
+    expect(screen.getByRole('heading', { name: '戦績一覧' })).toBeTruthy()
   })
 
   it('disables match start buttons when no yaku is enabled', () => {

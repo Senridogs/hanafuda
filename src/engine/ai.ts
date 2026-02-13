@@ -38,6 +38,7 @@ interface SearchProfile {
   readonly twoPlyWeight: number
   readonly reboundWeight: number
   readonly usePerfectInfo: boolean
+  readonly peekDeckTop: boolean
   readonly knownTurnPressureWeight: number
   readonly handPotentialWeight: number
   readonly topN: number
@@ -55,6 +56,7 @@ const TSUYOI_PROFILE: SearchProfile = {
   twoPlyWeight: 0.11,
   reboundWeight: 0.54,
   usePerfectInfo: false,
+  peekDeckTop: false,
   knownTurnPressureWeight: 0,
   handPotentialWeight: 0.29,
   topN: 2,
@@ -72,6 +74,7 @@ const YABAI_PROFILE: SearchProfile = {
   twoPlyWeight: 0.24,
   reboundWeight: 0.85,
   usePerfectInfo: false,
+  peekDeckTop: false,
   knownTurnPressureWeight: 0,
   handPotentialWeight: 0.82,
   topN: 1,
@@ -79,8 +82,9 @@ const YABAI_PROFILE: SearchProfile = {
 
 const ONI_PROFILE: SearchProfile = {
   ...YABAI_PROFILE,
-  usePerfectInfo: false,
-  knownTurnPressureWeight: 0,
+  usePerfectInfo: true,
+  peekDeckTop: false,
+  knownTurnPressureWeight: 0.62,
 }
 
 const KAMI_PROFILE: SearchProfile = ONI_PROFILE
@@ -427,7 +431,7 @@ function estimateOpponentKnownTurnPressure(
     const handStep = simulateBestImmediateHandCapture(fieldBeforeOpponentTurn, opponent.captured, handCard)
     const handGain = evaluateImmediateCaptureGain(oppCapturedBaseScore, oppFieldBaseDanger, handStep)
 
-    const drawCard = state.deck[opponentDrawDeckOffset]
+    const drawCard = profile.peekDeckTop ? state.deck[opponentDrawDeckOffset] : undefined
     let fieldAfterTurn = handStep.fieldAfter
     let capturedAfterTurn = handStep.capturedAfter
     let drawGain = 0
@@ -666,7 +670,7 @@ function evaluateHandOutcome(
   const immediateCardGain = outcome.capturedNow.reduce((sum, card) => sum + tacticalCardValue(card), 0)
 
   const remainingHand = aiPlayer.hand.filter((card) => card.id !== handCard.id)
-  const drawProjection = profile.usePerfectInfo
+  const drawProjection = profile.peekDeckTop
     ? projectDeterministicTopDraw(state.deck, outcome.fieldAfter, outcome.capturedAfter)
     : {
       gain: estimateDrawExpectation(
@@ -874,7 +878,7 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
   const capturedAfter = evaluateCapturedStrength(simulated.capturedAfter)
   const capturedDelta = capturedAfter - capturedBefore
   const immediateCardGain = simulated.capturedNow.reduce((sum, card) => sum + tacticalCardValue(card), 0)
-  const drawProjection = profile.usePerfectInfo && state.pendingSource === 'hand'
+  const drawProjection = profile.peekDeckTop && state.pendingSource === 'hand'
     ? projectDeterministicTopDraw(state.deck, simulated.fieldAfter, simulated.capturedAfter)
     : {
       gain: 0,
@@ -936,7 +940,7 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
 
   if (state.pendingSource === 'hand') {
     const handPotential = evaluateFutureHandPotential(aiPlayer.hand, fieldAfterOwnTurn)
-    const drawExpectation = profile.usePerfectInfo
+    const drawExpectation = profile.peekDeckTop
       ? drawProjection.gain
       : estimateDrawExpectation(drawCandidates, simulated.fieldAfter, simulated.capturedAfter, profile)
     score += handPotential * profile.handPotentialWeight * futurePhaseWeight
