@@ -23,12 +23,12 @@ interface CpuAssistProfile {
 export type CpuRoundMood = 'hot' | 'normal' | 'cold'
 
 const ROUND_MOOD_BASE: Record<GameConfig['aiDifficulty'], { hot: number; cold: number }> = {
-  yowai: { hot: 0.2, cold: 0.25 },
-  futsuu: { hot: 0.2, cold: 0.2 },
-  tsuyoi: { hot: 0.28, cold: 0.23 },
-  yabai: { hot: 0.32, cold: 0.22 },
-  oni: { hot: 0.36, cold: 0.24 },
-  kami: { hot: 0.4, cold: 0.24 },
+  yowai: { hot: 0.12, cold: 0.35 },
+  futsuu: { hot: 0.18, cold: 0.22 },
+  tsuyoi: { hot: 0.30, cold: 0.18 },
+  yabai: { hot: 0.40, cold: 0.14 },
+  oni: { hot: 0.45, cold: 0.15 },
+  kami: { hot: 0.50, cold: 0.16 },
 }
 
 const DIFFICULTY_SEED_OFFSET: Record<GameConfig['aiDifficulty'], number> = {
@@ -45,7 +45,7 @@ const CPU_ASSIST_BY_DIFFICULTY: Partial<Record<GameConfig['aiDifficulty'], CpuAs
     openingMargin: 5,
     maxExtraRetries: 16,
     drawSearchWindow: 2,
-    drawRigChance: 0.34,
+    drawRigChance: 0.20,
     openingBias: 'favor-ai',
     drawBias: 'best',
   },
@@ -53,7 +53,7 @@ const CPU_ASSIST_BY_DIFFICULTY: Partial<Record<GameConfig['aiDifficulty'], CpuAs
     openingMargin: 7,
     maxExtraRetries: 22,
     drawSearchWindow: 2,
-    drawRigChance: 0.42,
+    drawRigChance: 0.26,
     openingBias: 'favor-ai',
     drawBias: 'best',
   },
