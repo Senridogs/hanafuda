@@ -1126,42 +1126,124 @@ function chooseKoiKoi_Yabai(state: KoiKoiGameState): KoiKoiDecision {
   return chooseKoiKoi_Kami(state)
 }
 
-function shouldGambleKoiKoi(
-  state: KoiKoiGameState,
-  gambleRate: { overconfidence: number; desperation: number; hotBonus: number },
-): boolean {
+// ---------------------------------------------------------------------------
+// ギャンブルこいこい: 状況×性格×気まぐれで確率が動的に変わる
+//   鬼 = 勝負師: 読みのある賭け、ブレ幅は控えめ
+//   神 = ギャンブラー: 大胆不敵、ムードに振り回される、深追い上等
+// ---------------------------------------------------------------------------
+
+interface GamblerPersonality {
+  readonly base: number        // ベース衝動
+  readonly scale: number       // 状況反応の増幅率
+  readonly noise: number       // 気まぐれ幅
+  readonly maxKoikoi: number   // こいこい回数の上限
+  readonly yakuCeiling: number // これ以上の役は取る
+  readonly potCommit: number   // 深追い係数（0=合理的 / 高=ポットコミット）
+}
+
+const ONI_PERSONALITY: GamblerPersonality = {
+  base: 0.20, scale: 1.0, noise: 0.10, maxKoikoi: 2, yakuCeiling: 7, potCommit: 0.04,
+}
+const KAMI_PERSONALITY: GamblerPersonality = {
+  base: 0.40, scale: 1.4, noise: 0.22, maxKoikoi: 3, yakuCeiling: 9, potCommit: 0.14,
+}
+
+function computeGambleDesire(state: KoiKoiGameState, p: GamblerPersonality): number {
   const playerIndex = state.currentPlayerIndex
   const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
   const player = state.players[playerIndex]
   const opponent = state.players[opponentIndex]
   const mood = resolveAiRoundMood(state)
   const stopPoints = estimateStopRoundPoints(state, playerIndex)
-  const lead = (player.score + stopPoints) - opponent.score
+  const scoreDiff = (player.score + stopPoints) - opponent.score
   const turnsLeft = Math.max(0, player.hand.length)
+  const koikoiCount = state.koikoiCounts[playerIndex]
+  const opponentKoikoiCount = state.koikoiCounts[opponentIndex]
+  const isLastRound = state.round >= state.config.maxRounds
 
-  if (state.koikoiCounts[playerIndex] >= 2 || turnsLeft <= 1) {
-    return false
+  // --- 絶対やらない（冷める場面）---
+  if (turnsLeft <= 0) return 0
+  if (koikoiCount >= p.maxKoikoi) return 0
+  if (stopPoints >= p.yakuCeiling) return 0
+
+  let desire = p.base
+
+  // --- 点差による心理 ---
+  if (scoreDiff >= 15) {
+    desire += 0.30 * p.scale       // 舐めプ全開
+  } else if (scoreDiff >= 8) {
+    desire += 0.18 * p.scale       // 余裕の強気
+  } else if (scoreDiff >= -5 && scoreDiff <= 5) {
+    desire -= 0.18 * p.scale       // 接戦 → 堅実
+  } else if (scoreDiff <= -15) {
+    desire += 0.35 * p.scale       // ヤケクソ
+  } else if (scoreDiff <= -8) {
+    desire += 0.22 * p.scale       // 焦りの攻め
   }
 
-  const hotBonus = mood === 'hot' ? gambleRate.hotBonus : 0
-
-  if (lead >= 8 && stopPoints <= 5 && state.round < state.config.maxRounds) {
-    return Math.random() < gambleRate.overconfidence + hotBonus
+  // --- 役の大きさ ---
+  if (stopPoints <= 1) {
+    desire += 0.25 * p.scale
+  } else if (stopPoints <= 3) {
+    desire += 0.10 * p.scale
+  } else if (stopPoints >= 6) {
+    desire -= 0.25 * p.scale
+  } else if (stopPoints >= 5) {
+    desire -= 0.12 * p.scale
   }
 
+  // --- ムード ---
+  if (mood === 'hot') desire += 0.14 * p.scale
+  if (mood === 'cold') desire -= 0.14 * p.scale
+
+  // --- こいこい回数 × ポットコミット ---
+  // 合理的にはこいこいするほど慎重になるべきだが、
+  // ギャンブラーは「ここまで来たら引けない」と深追いする
+  desire -= koikoiCount * (0.15 - p.potCommit)
+
+  // --- 月の後半: 残りターンが少ないほど「今しかない」感 ---
+  // 序盤は様子見、中盤から焦り始め、終盤は大勝負
+  const roundProgress = 1 - turnsLeft / 8
+  if (roundProgress >= 0.75) {
+    desire += 0.22 * p.scale       // 終盤: 「今行かなきゃ」
+  } else if (roundProgress >= 0.5) {
+    desire += 0.08 * p.scale       // 中盤: じわじわ焦る
+  } else {
+    desire -= 0.06 * p.scale       // 序盤: まだ余裕、様子見
+  }
+
+  // --- 対抗心: 相手がこいこいしてる → 「負けてられない」 ---
+  if (opponentKoikoiCount > 0) {
+    desire += 0.14 * p.scale * Math.min(opponentKoikoiCount, 2)
+  }
+
+  // --- ティルト: ラウンド進行に対して負けすぎ → 冷静さを失う ---
+  // 3ラウンド目で20点差 vs 10ラウンド目で20点差は心理的に違う
   const deficit = opponent.score - player.score
-  if (deficit >= 12 && stopPoints <= 4) {
-    return Math.random() < gambleRate.desperation + hotBonus
+  if (deficit > 0 && state.round >= 3) {
+    const deficitPerRound = deficit / state.round
+    if (deficitPerRound >= 5) {
+      desire += 0.16 * p.scale     // 毎月大負け → 完全ティルト
+    } else if (deficitPerRound >= 3) {
+      desire += 0.08 * p.scale     // じわじわ負け → 焦り
+    }
   }
 
-  return false
+  // --- 最終ラウンドの緊張感 ---
+  if (isLastRound) {
+    if (scoreDiff > 0) desire -= 0.18
+    else desire += 0.14
+  }
+
+  // --- 気まぐれノイズ（人間味）---
+  desire += (Math.random() - 0.5) * 2 * p.noise
+
+  return Math.max(0, Math.min(1, desire))
 }
 
 function chooseKoiKoi_Oni(state: KoiKoiGameState): KoiKoiDecision {
   const base = chooseKoiKoi_Kami(state)
-  if (base === 'stop' && shouldGambleKoiKoi(state, { overconfidence: 0.22, desperation: 0.30, hotBonus: 0.10 })) {
-    return 'koikoi'
-  }
+  if (base === 'stop' && Math.random() < computeGambleDesire(state, ONI_PERSONALITY)) return 'koikoi'
   return base
 }
 
@@ -1272,9 +1354,7 @@ export function chooseAiKoiKoi(state: KoiKoiGameState): KoiKoiDecision {
       return chooseKoiKoi_Oni(state)
     case 'kami': {
       const base = chooseKoiKoi_Kami(state)
-      if (base === 'stop' && shouldGambleKoiKoi(state, { overconfidence: 0.35, desperation: 0.45, hotBonus: 0.15 })) {
-        return 'koikoi'
-      }
+      if (base === 'stop' && Math.random() < computeGambleDesire(state, KAMI_PERSONALITY)) return 'koikoi'
       return base
     }
     default:
