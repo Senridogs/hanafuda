@@ -62,18 +62,18 @@ const TSUYOI_PROFILE: SearchProfile = {
 
 const YABAI_PROFILE: SearchProfile = {
   drawSamples: Number.MAX_SAFE_INTEGER,
-  immediateProgressWeight: 1.24,
-  immediateCaptureWeight: 3.05,
-  drawExpectationWeight: 1.42,
-  fieldRiskWeight: 0.33,
-  opponentThreatWeight: 0.29,
+  immediateProgressWeight: 1.35,
+  immediateCaptureWeight: 3.4,
+  drawExpectationWeight: 1.65,
+  fieldRiskWeight: 0.42,
+  opponentThreatWeight: 0.38,
   opponentReplyWeight: 0.31,
   opponentReplySamples: 24,
   twoPlyWeight: 0.24,
-  reboundWeight: 0.74,
+  reboundWeight: 0.85,
   usePerfectInfo: true,
-  knownTurnPressureWeight: 0.49,
-  handPotentialWeight: 0.68,
+  knownTurnPressureWeight: 0.62,
+  handPotentialWeight: 0.82,
   topN: 1,
 }
 
@@ -1024,13 +1024,8 @@ function resolveAiRoundMood(state: KoiKoiGameState): CpuRoundMood {
   const opponentIndex: 0 | 1 = playerIndex === 0 ? 1 : 0
   const player = state.players[playerIndex]
   const opponent = state.players[opponentIndex]
-  const strategyDifficulty = state.config.aiDifficulty === 'yabai'
-    || state.config.aiDifficulty === 'oni'
-    || state.config.aiDifficulty === 'kami'
-    ? 'kami'
-    : state.config.aiDifficulty
   return resolveDifficultyRoundMood(
-    strategyDifficulty,
+    state.config.aiDifficulty,
     state.round,
     state.config.maxRounds,
     player.score,
@@ -1038,7 +1033,10 @@ function resolveAiRoundMood(state: KoiKoiGameState): CpuRoundMood {
   )
 }
 
-function chooseKoiKoi_Yowai(): KoiKoiDecision {
+function chooseKoiKoi_Yowai(state: KoiKoiGameState): KoiKoiDecision {
+  if (state.deck.length <= 10) {
+    return 'stop'
+  }
   return 'koikoi'
 }
 
@@ -1228,7 +1226,7 @@ export function chooseAiKoiKoi(state: KoiKoiGameState): KoiKoiDecision {
 
   switch (difficulty) {
     case 'yowai':
-      return chooseKoiKoi_Yowai()
+      return chooseKoiKoi_Yowai(state)
     case 'futsuu':
       return chooseKoiKoi_Futsuu(state)
     case 'tsuyoi':
