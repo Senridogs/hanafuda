@@ -50,7 +50,6 @@ const ONI_CPU_ASSIST_PROFILE: CpuAssistProfile = {
 }
 
 const CPU_ASSIST_BY_DIFFICULTY: Partial<Record<GameConfig['aiDifficulty'], CpuAssistProfile>> = {
-  oni: ONI_CPU_ASSIST_PROFILE,
   kami: ONI_CPU_ASSIST_PROFILE,
 }
 
