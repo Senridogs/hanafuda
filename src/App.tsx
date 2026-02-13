@@ -15,12 +15,15 @@ import {
   clearCpuCheckpoint,
   loadCpuCheckpoint,
   loadLocalRuleSettings,
+  loadMatchRecords,
   loadPreferredRoundCount,
   loadSessionMeta,
+  recordMatchResult,
   resetLocalRuleSettings,
   saveLocalRuleSettings,
   savePreferredRoundCount,
   saveCpuCheckpoint,
+  type MatchRecord,
 } from './net/persistence'
 import './App.css'
 import { chooseAiHandCard, chooseAiKoiKoi, chooseAiMatch } from './engine/ai'
@@ -174,17 +177,19 @@ const AI_DIFFICULTY_LABELS: Record<string, string> = {
   oni: 'おに',
   kami: 'かみ',
 }
+const MATCH_RESULT_LABELS: Readonly<Record<MatchRecord['result'], string>> = {
+  win: '勝ち',
+  loss: '負け',
+  draw: '引き分け',
+}
 const YAKU_DROP_TIME_SCALE = 2
 const YAKU_DROP_CARD_STAGGER_SECONDS = 0.24 * YAKU_DROP_TIME_SCALE
 const YAKU_DROP_CARD_DURATION_SECONDS = 0.72 * YAKU_DROP_TIME_SCALE
 const YAKU_DROP_NAME_DURATION_SECONDS = 0.36 * YAKU_DROP_TIME_SCALE
 const YAKU_DROP_HOLD_MS = 360
 const TURN_DECISION_EFFECT_DURATION_MS = 2400
-const OPPONENT_KOIKOI_EFFECT_DURATION_MS = TURN_DECISION_EFFECT_DURATION_MS * 2
-const TURN_BANNER_AFTER_KOIKOI_DELAY_MS = TURN_DECISION_EFFECT_DURATION_MS + 140
-const PC_YAKU_LIGHT_KEYS = new Set(['goko', 'shiko', 'ame-shiko', 'sanko'])
-const PC_YAKU_TANE_KEYS = new Set(['tane', 'inoshikacho', 'hanami-zake', 'tsukimi-zake'])
-const PC_YAKU_TAN_KEYS = new Set(['tanzaku', 'akatan', 'aotan'])
+const OPPONENT_KOIKOI_EFFECT_DURATION_MS = TURN_DECISION_EFFECT_DURATION_MS
+const TURN_BANNER_AFTER_KOIKOI_DELAY_MS = TURN_DECISION_EFFECT_DURATION_MS
 const TURN_DECISION_SPARK_INDICES = [0, 1, 2, 3, 4, 5, 6, 7] as const
 const RULE_HELP_SWIPE_THRESHOLD_PX = 38
 const RULE_HELP_CARD_TYPE_LABELS: Readonly<Record<HanafudaCard['type'], string>> = {
@@ -626,22 +631,6 @@ function getRuleHelpExampleCards(cardIds: readonly string[] | undefined): readon
   })
 }
 
-function getPcYakuEntryRank(key: string): number {
-  if (PC_YAKU_LIGHT_KEYS.has(key)) {
-    return 0
-  }
-  if (PC_YAKU_TANE_KEYS.has(key)) {
-    return 1
-  }
-  if (PC_YAKU_TAN_KEYS.has(key)) {
-    return 2
-  }
-  if (key === 'kasu') {
-    return 3
-  }
-  return 4
-}
-
 function filterInMatchYakuEntries(entries: readonly VisibleYakuProgressState[]): readonly VisibleYakuProgressState[] {
   return entries
 }
@@ -906,9 +895,8 @@ function YakuProgressEntry(props: {
 }) {
   const { entryKey, label, current, target, cards, done, subEntries } = props
   const isKasuEntry = entryKey === 'kasu'
-  const visibleSlots = cards.length > 0
-    ? Array.from({ length: isKasuEntry ? cards.length : target }, (_, index) => cards[index] ?? null)
-    : []
+  const slotCount = isKasuEntry ? Math.max(cards.length, target) : target
+  const visibleSlots = Array.from({ length: slotCount }, (_, index) => cards[index] ?? null)
 
   return (
     <div className={`progress-entry ${isKasuEntry ? 'kasu-entry' : ''}`}>
@@ -922,7 +910,7 @@ function YakuProgressEntry(props: {
           </span>
         ))}
       </div>
-      {cards.length > 0 ? (
+      {visibleSlots.length > 0 ? (
         <div className={`progress-card-strip ${isKasuEntry ? 'kasu-stack' : ''}`}>
           {visibleSlots.map((card, index) =>
             card ? (
@@ -964,22 +952,9 @@ function RoleYakuPanel(props: {
     () => buildYakuProgressEntries(captured, yaku, blockedCardIds, ruleOptions),
     [blockedCardIds, captured, ruleOptions, yaku],
   )
-  const visibleProgressEntries = useMemo(
-    () => filterInMatchYakuEntries(buildVisibleYakuProgressEntries(progressEntries, { includeDoneCards: true })),
+  const pcFixedProgressEntries = useMemo(
+    () => progressEntries,
     [progressEntries],
-  )
-  const pcOrderedProgressEntries = useMemo(
-    () => visibleProgressEntries
-      .map((entry, index) => ({ entry, index }))
-      .sort((a, b) => {
-        const rankDiff = getPcYakuEntryRank(a.entry.key) - getPcYakuEntryRank(b.entry.key)
-        if (rankDiff !== 0) {
-          return rankDiff
-        }
-        return a.index - b.index
-      })
-      .map((item) => item.entry),
-    [visibleProgressEntries],
   )
 
   return (
@@ -989,9 +964,9 @@ function RoleYakuPanel(props: {
         <span className="panel-mini-score">{score}点</span>
       </div>
 
-      {pcOrderedProgressEntries.length > 0 ? (
+      {pcFixedProgressEntries.length > 0 ? (
         <section className="progress-matrix">
-          {pcOrderedProgressEntries.map((entry) => (
+          {pcFixedProgressEntries.map((entry) => (
             <YakuProgressEntry
               key={entry.key}
               entryKey={entry.key}
@@ -1000,7 +975,6 @@ function RoleYakuPanel(props: {
               target={entry.target}
               cards={entry.cards}
               done={entry.done}
-              subEntries={entry.subEntries}
             />
           ))}
         </section>
@@ -1851,7 +1825,10 @@ function App() {
   const [pendingHandPlaceholder, setPendingHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
   const [pendingAiHandPlaceholder, setPendingAiHandPlaceholder] = useState<{ card: HanafudaCard; index: number } | null>(null)
 
+  const [matchRecords, setMatchRecords] = useState<readonly MatchRecord[]>(() => loadMatchRecords())
   const [isScoreTableVisible, setIsScoreTableVisible] = useState(false)
+  const [isMatchRecordPanelVisible, setIsMatchRecordPanelVisible] = useState(false)
+  const [selectedMatchRecordId, setSelectedMatchRecordId] = useState<string | null>(null)
   const [isLocalRulePanelVisible, setIsLocalRulePanelVisible] = useState(false)
   const [isRuleHelpVisible, setIsRuleHelpVisible] = useState(false)
   const [ruleHelpPageIndex, setRuleHelpPageIndex] = useState(0)
@@ -1869,6 +1846,7 @@ function App() {
   const koikoiDecisionYakuTimerRef = useRef<number | null>(null)
   const [handDrag, setHandDrag] = useState<HandDragState | null>(null)
   const prevPhaseRef = useRef(game.phase)
+  const prevGameResultPhaseRef = useRef(game.phase)
   const rectMapRef = useRef<Map<string, DOMRect>>(new Map())
   const prevRectMapRef = useRef<Map<string, DOMRect>>(new Map())
   const lastKnownRectMapRef = useRef<Map<string, DOMRect>>(new Map())
@@ -1991,6 +1969,18 @@ function App() {
     : game.players[1].id === humanPlayer.id ? 'あなた' : '相手'
   const player1ScoreTableTotal = game.players[0].score
   const player2ScoreTableTotal = game.players[1].score
+  const selectedMatchRecord = useMemo(
+    () => (selectedMatchRecordId ? matchRecords.find((record) => record.id === selectedMatchRecordId) ?? null : null),
+    [matchRecords, selectedMatchRecordId],
+  )
+  const selectedRecordPlayer1Name = selectedMatchRecord
+    ? selectedMatchRecord.localPlayerId === 'player1' ? 'あなた' : '相手'
+    : 'player1'
+  const selectedRecordPlayer2Name = selectedMatchRecord
+    ? selectedMatchRecord.localPlayerId === 'player2' ? 'あなた' : '相手'
+    : 'player2'
+  const selectedRecordPlayer1Total = selectedMatchRecord?.player1Score ?? 0
+  const selectedRecordPlayer2Total = selectedMatchRecord?.player2Score ?? 0
   // Use PC layout only when in fullscreen AND landscape orientation
   // Portrait fullscreen keeps mobile layout
   const useMobileViewLayout = isMobileLayout && !(isLandscapeFullscreen && isLandscapeOrientation)
@@ -2202,6 +2192,56 @@ function App() {
   }, [game, isBootstrapRestored, isMatchSurfaceVisible, multiplayer.mode])
 
   useEffect(() => {
+    if (!isBootstrapRestored) {
+      prevGameResultPhaseRef.current = game.phase
+      return
+    }
+    const previousPhase = prevGameResultPhaseRef.current
+    prevGameResultPhaseRef.current = game.phase
+    if (game.phase !== 'gameOver' || previousPhase === 'gameOver') {
+      return
+    }
+
+    const result: MatchRecord['result'] = game.winner === null
+      ? 'draw'
+      : game.winner === humanPlayer.id
+        ? 'win'
+        : 'loss'
+    const opponentName = multiplayer.mode === 'cpu'
+      ? `${aiPlayer.name}${cpuDifficultyLabel ? `（${cpuDifficultyLabel}）` : ''}`
+      : '相手'
+    const saved = recordMatchResult({
+      mode: multiplayer.mode,
+      opponentName,
+      maxRounds: game.config.maxRounds,
+      playedRounds: game.round,
+      result,
+      localPlayerId: humanPlayer.id,
+      player1Name: game.players[0].name,
+      player2Name: game.players[1].name,
+      player1Score: game.players[0].score,
+      player2Score: game.players[1].score,
+      roundScoreHistory: game.roundScoreHistory,
+    })
+    if (!saved) {
+      return
+    }
+    setMatchRecords((current) => [saved, ...current.filter((record) => record.id !== saved.id)])
+  }, [
+    aiPlayer.name,
+    cpuDifficultyLabel,
+    game.config.maxRounds,
+    game.phase,
+    game.players,
+    game.round,
+    game.roundScoreHistory,
+    game.winner,
+    humanPlayer.id,
+    isBootstrapRestored,
+    multiplayer.mode,
+  ])
+
+  useEffect(() => {
     setIsFinalResultVisible(false)
   }, [game.phase])
 
@@ -2270,8 +2310,26 @@ function App() {
   }, [])
   const openRuleHelp = useCallback((): void => {
     setIsScoreTableVisible(false)
+    setIsMatchRecordPanelVisible(false)
+    setSelectedMatchRecordId(null)
     setRuleHelpPageIndex(0)
     setIsRuleHelpVisible(true)
+  }, [])
+  const openMatchRecordPanel = useCallback((): void => {
+    setIsRuleHelpVisible(false)
+    setIsScoreTableVisible(false)
+    setIsMatchRecordPanelVisible(true)
+    setSelectedMatchRecordId(null)
+  }, [])
+  const closeMatchRecordPanel = useCallback((): void => {
+    setIsMatchRecordPanelVisible(false)
+    setSelectedMatchRecordId(null)
+  }, [])
+  const openMatchRecordDetail = useCallback((recordId: string): void => {
+    setSelectedMatchRecordId(recordId)
+  }, [])
+  const closeMatchRecordDetail = useCallback((): void => {
+    setSelectedMatchRecordId(null)
   }, [])
   const closeRuleHelp = useCallback((): void => {
     ruleHelpSwipeStartRef.current = null
@@ -2398,7 +2456,7 @@ function App() {
     if (latestAction?.type === 'koikoi') {
       const delayMs =
         latestAction.player === aiPlayer.id
-          ? OPPONENT_KOIKOI_EFFECT_DURATION_MS + 140
+          ? OPPONENT_KOIKOI_EFFECT_DURATION_MS
           : TURN_BANNER_AFTER_KOIKOI_DELAY_MS
       turnBannerDelayTimerRef.current = window.setTimeout(() => {
         setTurnBanner(nextBanner)
@@ -3712,6 +3770,7 @@ function App() {
       target.closest('.app-chrome-panel') ||
       target.closest('.header-settings-toggle-button') ||
       target.closest('.score-table-overlay') ||
+      target.closest('.match-record-overlay') ||
       target.closest('.local-rule-overlay') ||
       target.closest('.rule-help-overlay')
     ) {
@@ -3753,6 +3812,8 @@ function App() {
     setMoveEffects([])
     setTurnDecisionCallouts([])
     setAnimatedAddToFieldHistoryLength(0)
+    setIsMatchRecordPanelVisible(false)
+    setSelectedMatchRecordId(null)
     setRemoteQueueVersion(0)
     setIsLocalRulePanelVisible(false)
     setIsRuleHelpVisible(false)
@@ -4267,7 +4328,7 @@ function App() {
 
   return (
     <main ref={appContainerRef} className={`app ${isChromeCollapsed ? 'chrome-collapsed' : ''}`} onPointerDown={handleAppPointerDown}>
-      {!isLocalRulePanelVisible ? (
+      {!isLocalRulePanelVisible && !isMatchRecordPanelVisible ? (
         <section className={`app-chrome ${isChromeCollapsed ? 'collapsed' : 'expanded'}`}>
           <div className={`chrome-toggle-row ${!useMobileViewLayout ? 'desktop-controls' : ''}`}>
             {isMobileLayout && !isLandscapeFullscreen ? (
@@ -4293,10 +4354,19 @@ function App() {
               className="chrome-toggle-button"
               onClick={() => {
                 setIsRuleHelpVisible(false)
+                setIsMatchRecordPanelVisible(false)
+                setSelectedMatchRecordId(null)
                 setIsScoreTableVisible((current) => !current)
               }}
             >
               {isScoreTableVisible ? '点数表を閉じる' : '点数表'}
+            </button>
+            <button
+              type="button"
+              className="chrome-toggle-button"
+              onClick={openMatchRecordPanel}
+            >
+              戦績
             </button>
             <button
               type="button"
@@ -4318,6 +4388,8 @@ function App() {
                   onClick={() => {
                     setIsRuleHelpVisible(false)
                     setIsScoreTableVisible(false)
+                    setIsMatchRecordPanelVisible(false)
+                    setSelectedMatchRecordId(null)
                     setIsLocalRulePanelVisible(true)
                   }}
                 >
@@ -4730,6 +4802,76 @@ function App() {
               maxRounds={game.config.maxRounds}
               isMobileView={useMobileViewLayout}
             />
+          </section>
+        </section>
+      ) : null}
+
+      {isMatchRecordPanelVisible ? (
+        <section className="match-record-overlay" role="presentation" onClick={closeMatchRecordPanel}>
+          <section className="match-record-panel" aria-label="戦績パネル" onClick={(event) => event.stopPropagation()}>
+            <div className="match-record-panel-head">
+              <div className="match-record-panel-title">
+                <h2>{selectedMatchRecord ? '戦績詳細' : '戦績一覧'}</h2>
+                <p>
+                  {selectedMatchRecord
+                    ? `${selectedMatchRecord.opponentName} / ${selectedMatchRecord.maxRounds}月 / ${MATCH_RESULT_LABELS[selectedMatchRecord.result]}`
+                    : `保存件数: ${matchRecords.length}件`}
+                </p>
+              </div>
+              <div className="match-record-panel-head-actions">
+                {selectedMatchRecord ? (
+                  <button type="button" className="score-table-close-button" onClick={closeMatchRecordDetail}>
+                    一覧へ戻る
+                  </button>
+                ) : null}
+                <button type="button" className="score-table-close-button" onClick={closeMatchRecordPanel}>
+                  閉じる
+                </button>
+              </div>
+            </div>
+
+            {!selectedMatchRecord ? (
+              <div className="match-record-list" role="list" aria-label="戦績一覧">
+                {matchRecords.length === 0 ? (
+                  <p className="match-record-empty">戦績はまだありません。</p>
+                ) : (
+                  matchRecords.map((record) => (
+                    <button
+                      key={record.id}
+                      type="button"
+                      className="match-record-row"
+                      onClick={() => openMatchRecordDetail(record.id)}
+                    >
+                      <span className="match-record-row-opponent">{record.opponentName}</span>
+                      <span className="match-record-row-round">{record.maxRounds}月</span>
+                      <span className={`match-record-row-result ${record.result}`}>
+                        {MATCH_RESULT_LABELS[record.result]}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : (
+              <div className="match-record-detail">
+                <div className="match-record-detail-summary">
+                  <span className="match-record-detail-opponent">{selectedMatchRecord.opponentName}</span>
+                  <span className="match-record-detail-round">{selectedMatchRecord.maxRounds}月対戦</span>
+                  <span className={`match-record-detail-result ${selectedMatchRecord.result}`}>
+                    {MATCH_RESULT_LABELS[selectedMatchRecord.result]}
+                  </span>
+                </div>
+                <ScoreTable
+                  roundScoreHistory={selectedMatchRecord.roundScoreHistory}
+                  player1Name={selectedRecordPlayer1Name}
+                  player2Name={selectedRecordPlayer2Name}
+                  player1TotalScore={selectedRecordPlayer1Total}
+                  player2TotalScore={selectedRecordPlayer2Total}
+                  currentRound={selectedMatchRecord.playedRounds}
+                  maxRounds={selectedMatchRecord.maxRounds}
+                  isMobileView={useMobileViewLayout}
+                />
+              </div>
+            )}
           </section>
         </section>
       ) : null}
