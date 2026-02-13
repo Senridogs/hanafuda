@@ -71,15 +71,19 @@ const YABAI_PROFILE: SearchProfile = {
   opponentReplySamples: 24,
   twoPlyWeight: 0.24,
   reboundWeight: 0.85,
-  usePerfectInfo: true,
-  knownTurnPressureWeight: 0.62,
+  usePerfectInfo: false,
+  knownTurnPressureWeight: 0,
   handPotentialWeight: 0.82,
   topN: 1,
 }
 
-const ONI_PROFILE: SearchProfile = YABAI_PROFILE
+const ONI_PROFILE: SearchProfile = {
+  ...YABAI_PROFILE,
+  usePerfectInfo: true,
+  knownTurnPressureWeight: 0.62,
+}
 
-const KAMI_PROFILE: SearchProfile = YABAI_PROFILE
+const KAMI_PROFILE: SearchProfile = ONI_PROFILE
 
 interface HandStepOutcome {
   readonly chosenMatch: HanafudaCard | null
@@ -683,6 +687,9 @@ function evaluateHandOutcome(
   const drawExpectation = drawProjection.gain
   const fieldRisk = evaluateFieldDanger(fieldAfterOwnTurn)
   const opponentThreat = estimateOpponentCaptureThreat(fieldAfterOwnTurn, drawCandidates)
+  const deckRemainingRatio = Math.min(1, state.deck.length / 16)
+  const immediatePhaseWeight = 1.08 + (1 - deckRemainingRatio) * 0.52
+  const futurePhaseWeight = 0.72 + deckRemainingRatio * 0.48
 
   const opponentReplyPressure = profile.usePerfectInfo
     ? 0
@@ -719,14 +726,14 @@ function evaluateHandOutcome(
   const stopPotential = stopPoints * 18
 
   return capturedDelta * profile.immediateProgressWeight
-    + immediateCardGain * profile.immediateCaptureWeight
-    + drawExpectation * profile.drawExpectationWeight
-    + futureHandPotential * profile.handPotentialWeight
+    + immediateCardGain * profile.immediateCaptureWeight * immediatePhaseWeight
+    + drawExpectation * profile.drawExpectationWeight * immediatePhaseWeight
+    + futureHandPotential * profile.handPotentialWeight * futurePhaseWeight
     + stopPotential
     - fieldRisk * profile.fieldRiskWeight
-    - opponentThreat * profile.opponentThreatWeight
-    - opponentReplyPressure * profile.opponentReplyWeight
-    - twoPlyPressure * profile.twoPlyWeight
+    - opponentThreat * profile.opponentThreatWeight * immediatePhaseWeight
+    - opponentReplyPressure * profile.opponentReplyWeight * immediatePhaseWeight
+    - twoPlyPressure * profile.twoPlyWeight * immediatePhaseWeight
     - knownTurnPressure * profile.knownTurnPressureWeight
 }
 
@@ -914,14 +921,17 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
     state.koikoiCounts[opponentIndex] > 0,
   )
   const stopPotential = stopPoints * 18
+  const deckRemainingRatio = Math.min(1, state.deck.length / 16)
+  const immediatePhaseWeight = 1.08 + (1 - deckRemainingRatio) * 0.52
+  const futurePhaseWeight = 0.72 + deckRemainingRatio * 0.48
 
   let score = capturedDelta * profile.immediateProgressWeight
-    + immediateCardGain * profile.immediateCaptureWeight
+    + immediateCardGain * profile.immediateCaptureWeight * immediatePhaseWeight
     + stopPotential
     - fieldRisk * profile.fieldRiskWeight
-    - opponentThreat * profile.opponentThreatWeight
-    - opponentReplyPressure * profile.opponentReplyWeight
-    - twoPlyPressure * profile.twoPlyWeight
+    - opponentThreat * profile.opponentThreatWeight * immediatePhaseWeight
+    - opponentReplyPressure * profile.opponentReplyWeight * immediatePhaseWeight
+    - twoPlyPressure * profile.twoPlyWeight * immediatePhaseWeight
     - knownTurnPressure * profile.knownTurnPressureWeight
 
   if (state.pendingSource === 'hand') {
@@ -929,8 +939,8 @@ function evaluatePendingMatchChoice(state: KoiKoiGameState, matchedCard: Hanafud
     const drawExpectation = profile.usePerfectInfo
       ? drawProjection.gain
       : estimateDrawExpectation(drawCandidates, simulated.fieldAfter, simulated.capturedAfter, profile)
-    score += handPotential * profile.handPotentialWeight
-    score += drawExpectation * profile.drawExpectationWeight
+    score += handPotential * profile.handPotentialWeight * futurePhaseWeight
+    score += drawExpectation * profile.drawExpectationWeight * immediatePhaseWeight
   }
 
   return score
